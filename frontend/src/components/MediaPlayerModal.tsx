@@ -130,6 +130,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
   const primaryAudioIndexRef = useRef<number | undefined>(undefined);
   const audioTrackCountRef = useRef(0);
   const isMutedRef = useRef(false);
+  const companionAudioModeRef = useRef<'native' | 'alternate' | null>(null);
   const alternateAudioRequestRef = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -153,6 +154,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     setSelectedHlsSubtitleIndex(undefined);
     alternateAudioIndexRef.current = undefined;
     primaryAudioIndexRef.current = undefined;
+    companionAudioModeRef.current = null;
     alternateAudioRequestRef.current += 1;
     const alternateAudio = alternateAudioRef.current;
     if (alternateAudio) {
@@ -639,7 +641,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     }
 
     const playRequests: Promise<any>[] = [media.play()];
-    if (alternateAudioIndexRef.current !== undefined && alternateAudio?.src) {
+    if (companionAudioModeRef.current !== null && alternateAudio?.src) {
       playRequests.push(alternateAudio.play());
     }
     Promise.allSettled(playRequests).then(() => {
@@ -663,7 +665,18 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     // When an alternate Seedr audio track is active, reload that audio from
     // the requested absolute video position. The video itself remains on its
     // original full-duration timeline.
-    if (alternateAudioIndexRef.current !== undefined) {
+    if (companionAudioModeRef.current === 'native') {
+      const companion = alternateAudioRef.current;
+      if (companion) {
+        try {
+          companion.currentTime = time;
+        } catch {}
+        if (wasPlaying) void companion.play().catch(() => {});
+      }
+      return;
+    }
+
+    if (companionAudioModeRef.current === 'alternate' && alternateAudioIndexRef.current !== undefined) {
       loadAlternateAudio(alternateAudioIndexRef.current, time, wasPlaying);
       return;
     }
@@ -710,7 +723,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     if (isMuted) {
       const nextVolume = volume || 0.8;
       media.volume = nextVolume;
-      const externalAudioActive = alternateAudioIndexRef.current !== undefined;
+      const externalAudioActive = companionAudioModeRef.current !== null;
       media.muted = externalAudioActive;
       if (alternateAudio) {
         alternateAudio.volume = nextVolume;
@@ -753,6 +766,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     setTrackNotice('Switching audio…');
     setMediaError('');
     setIsSeeking(true);
+    companionAudioModeRef.current = 'alternate';
     alternateAudioIndexRef.current = trackIndex;
 
     let started = false;
@@ -819,7 +833,8 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
       audio.removeEventListener('loadeddata', startTogether);
       audio.removeEventListener('canplay', startTogether);
       alternateAudioIndexRef.current = undefined;
-      media.muted = isMuted;
+      companionAudioModeRef.current = null;
+      media.muted = isMutedRef.current;
       setIsSeeking(false);
       setIsPlaying(false);
       setTrackNotice('Unable to load the selected audio track.');
@@ -868,6 +883,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
       audio.load();
     }
     alternateAudioIndexRef.current = undefined;
+    companionAudioModeRef.current = null;
 
     if (restoreVideoAudio && media) {
       media.volume = isMutedRef.current ? 0 : volume;
@@ -957,10 +973,58 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     const primary = primaryAudioIndexRef.current;
 
     if (!isMultiAudio) {
-      if (alternateAudioIndexRef.current !== undefined) {
-        clearAlternateAudio(true);
+      const companion = alternateAudioRef.current;
+      const fileId = file.streamId || file.id.replace(/^seedr-/, '');
+      if (!companion || !fileId) {
+        media.muted = isMutedRef.current;
+        return;
       }
-      media.muted = isMuted;
+
+      const companionUrl =
+        API_BASE + '/api/seedr/media/native-audio/' + encodeURIComponent(fileId);
+
+      // Single-audio files use Seedr's prepared MP3 rendition as a lightweight
+      // companion track. The video stays on the original native Range stream;
+      // no FFmpeg is involved, so this avoids the silent-video presentation
+      // while keeping the Render service out of the transcoding path.
+      if (
+        companionAudioModeRef.current !== 'native' ||
+        companion.src !== companionUrl
+      ) {
+        const position = Number.isFinite(media.currentTime) ? media.currentTime : currentTime;
+        const wasPlaying = !media.paused || isPlaying;
+
+        alternateAudioRequestRef.current += 1;
+        companion.pause();
+        companion.src = companionUrl;
+        companion.preload = 'auto';
+        companion.volume = media.volume;
+        companion.muted = isMutedRef.current;
+        companion.playbackRate = playbackSpeed;
+        companionAudioModeRef.current = 'native';
+        alternateAudioIndexRef.current = 0;
+        media.muted = true;
+
+        const startCompanion = () => {
+          try {
+            companion.currentTime = Math.max(0, position);
+          } catch {}
+          if (wasPlaying) {
+            void companion.play().catch(() => {});
+          }
+        };
+        companion.addEventListener('loadedmetadata', startCompanion, { once: true });
+        companion.load();
+      } else {
+        media.muted = true;
+        companion.volume = media.volume;
+        companion.muted = isMutedRef.current;
+        companion.playbackRate = playbackSpeed;
+        if (!media.paused && companion.paused) {
+          void companion.play().catch(() => {});
+        }
+      }
+
       return;
     }
 
@@ -1139,8 +1203,25 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
 
   // Time update
   const onTimeUpdate = () => {
-    if (mediaRef.current) {
-      setCurrentTime(mediaRef.current.currentTime);
+    const media = mediaRef.current;
+    if (!media) return;
+
+    setCurrentTime(media.currentTime);
+
+    const companion = alternateAudioRef.current;
+    if (
+      isVideo &&
+      companionAudioModeRef.current !== null &&
+      companion &&
+      !companion.paused &&
+      Number.isFinite(companion.currentTime)
+    ) {
+      const drift = companion.currentTime - media.currentTime;
+      if (Math.abs(drift) > 0.35) {
+        try {
+          companion.currentTime = media.currentTime;
+        } catch {}
+      }
     }
   };
 
