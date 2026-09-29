@@ -578,9 +578,14 @@ export default function App() {
   // The Files tab is reserved for completed/stored files and folders.
   // Active qBittorrent downloads belong only in the Transfers tab.
   const visibleFiles = useMemo(() => {
-    const source = currentFolder === '/' && seedrAllPrefetchedFiles.length > 0
-      ? seedrAllPrefetchedFiles.map(toSeedrStorageFile)
-      : files;
+    const selectedCachedFiles = selectedSeedrFolderId
+      ? seedrFolderContentsCache[selectedSeedrFolderId]
+      : undefined;
+    const source = selectedCachedFiles
+      ? selectedCachedFiles.map(toSeedrStorageFile)
+      : currentFolder === '/' && seedrAllPrefetchedFiles.length > 0
+        ? seedrAllPrefetchedFiles.map(toSeedrStorageFile)
+        : files;
 
     const search = fileSearch.trim().toLowerCase();
     const filtered = source.filter(file => {
@@ -595,7 +600,7 @@ export default function App() {
     return [...filtered].sort((a, b) =>
       a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
     );
-  }, [currentFolder, seedrAllPrefetchedFiles, files, toSeedrStorageFile, fileTypeFilter, fileSearch]);
+  }, [currentFolder, selectedSeedrFolderId, seedrFolderContentsCache, seedrAllPrefetchedFiles, files, toSeedrStorageFile, fileTypeFilter, fileSearch]);
   // Modals & Drawers
   const [isAddMagnetOpen, setIsAddMagnetOpen] = useState(false);
   const [initialMagnet, setInitialMagnet] = useState('');
@@ -1170,6 +1175,27 @@ export default function App() {
     });
   }, []);
 
+  const handleOpenSearchSeedrFiles = useCallback((folderId = '', folderPath = '') => {
+    const id = String(folderId || '').trim();
+    const path = String(folderPath || '').trim();
+
+    setActiveTab('files');
+    setFileSearch('');
+    setFileTypeFilter('all');
+
+    if (id) {
+      setSelectedSeedrFolderId(id);
+      const cached = seedrFolderContentsCache[id];
+      if (cached) setSeedrFiles(cached);
+    } else {
+      setSelectedSeedrFolderId(null);
+    }
+
+    if (path) {
+      setCurrentFolder(path);
+    }
+  }, [seedrFolderContentsCache]);
+
   const handleSearchPrepare = useCallback(async (
     result: {
       title: string;
@@ -1681,6 +1707,56 @@ export default function App() {
         const completed = applyProgress(progressResult);
 
         if (!completed) {
+          const activeFolderId = String(
+            progressResult.folderId || seedrNotice.folderId || ''
+          ).trim();
+
+          if (activeFolderId) {
+            try {
+              const contents = await api.getSeedrFolderContents(activeFolderId);
+              if (active) {
+                const activeFolderPath = '/Torrent Studio/' + (
+                  String(seedrNotice.name || progressResult.name || 'Downloads').trim() || 'Downloads'
+                );
+                const mapped = contents.files.map(file => ({
+                  id: file.id,
+                  streamId: file.streamId,
+                  name: file.name,
+                  size: Number(file.size) || 0,
+                  folderId: file.folderId || activeFolderId,
+                  folderPath: activeFolderPath,
+                }));
+
+                setSeedrFolderContentsCache(prev => ({
+                  ...prev,
+                  [activeFolderId]: mapped,
+                }));
+
+                if (selectedSeedrFolderId === activeFolderId) {
+                  setSeedrFiles(mapped);
+                  setSeedrFolderContentsLoading(false);
+                }
+
+                // Resolve Search's Prepare promise as soon as the first file
+                // exists. The download itself continues in the background.
+                if (mapped.length > 0) {
+                  const waiterKey = String(seedrNotice.taskId);
+                  const waiter = seedrPrepareWaiters.current[waiterKey];
+                  if (waiter) {
+                    delete seedrPrepareWaiters.current[waiterKey];
+                    waiter.resolve({ files: mapped });
+                  }
+                }
+              }
+            } catch {
+              // Seedr may not expose the folder until shortly after the task
+              // starts. Keep polling progress and try the contents again next time.
+            }
+          }
+
+          // Poll frequently so the visible progress bar and file list keep
+          // moving while Seedr is downloading.
+
           // Poll frequently so the visible progress bar moves as soon as Seedr
           // reports a newer value.
           scheduleNextPoll(progressResult.status === 'waiting' ? 10000 : 4000);
@@ -2671,6 +2747,16 @@ export default function App() {
             onOpenProgress={() => {
               setActiveTab('files');
             }}
+            onOpenSeedrFiles={handleOpenSearchSeedrFiles}
+            seedrActiveDownload={seedrDownloadActive && seedrNotice ? {
+              name: seedrNotice.name,
+              folderId: String(seedrNotice.folderId || '').trim(),
+              folderPath: String(seedrNotice.folderId || '').trim()
+                ? '/Torrent Studio/' + (seedrNotice.name || 'Downloads')
+                : '',
+              status: seedrNotice.status,
+              progress: Number(seedrNotice.progress || 0),
+            } : null}
             seedrFiles={seedrAllPrefetchedFiles}
             seedrDeletedFolderIds={seedrDeletedFolderIds}
             onPlaySeedrFile={handleStreamSeedrFile}
