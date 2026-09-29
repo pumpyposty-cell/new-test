@@ -2736,32 +2736,8 @@ export default function App() {
           </div>
         )}
 
-        <div
-          hidden={!seedrDownloadActive || !seedrNotice}
-          className="sticky top-2 z-40 mb-3 rounded-2xl border border-emerald-500/30 bg-slate-950/95 px-3.5 py-3.5 shadow-xl shadow-emerald-950/20 backdrop-blur-md"
-        >
-          <div className="flex items-center gap-3">
-            <Loader2 className="h-5 w-5 shrink-0 animate-spin text-emerald-400" />
-            <div className="min-w-0 flex-1">
-              <div className="text-xs font-bold text-slate-100 truncate">
-                Loading {seedrNotice?.name || 'torrent'} in Seedr
-              </div>
-              <div className="mt-0.5 text-[11px] text-slate-400">
-                {seedrNotice?.status === 'waiting' ? 'Waiting for Seedr to start…' : 'Downloading…'}
-              </div>
-              <div className="mt-1 text-xs font-semibold text-emerald-300">
-                {Number(seedrNotice?.progress || 0).toFixed(1)}%
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => void handleCancelSeedrDownload()}
-              disabled={isCancellingSeedr}
-              className="shrink-0 rounded-xl border border-rose-500/25 bg-rose-500/10 px-2.5 py-1.5 text-[10px] font-bold text-rose-300 hover:bg-rose-500/20 disabled:opacity-50"
-            >
-              {isCancellingSeedr ? 'Cancelling…' : 'Cancel'}
-            </button>
-          </div>
+        <div className="sticky top-2 z-40 mb-3 rounded-2xl border border-emerald-500/30 bg-slate-950/95 px-3.5 py-3.5">
+          Seedr download in progress
         </div>
 
         {/* TAB 0: TORRENT SEARCH
