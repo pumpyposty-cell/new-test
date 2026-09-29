@@ -590,7 +590,16 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
       if (requestId !== alternateAudioRequestRef.current) return;
       audio.removeEventListener('canplay', startTogether);
       audio.removeEventListener('error', handleAudioError);
-      audio.currentTime = 0;
+      // The alternate presentation has its own timeline. Start it at the
+      // exact video position instead of always restarting from 0.
+      const targetTime = Number.isFinite(safePosition) ? safePosition : 0;
+      try {
+        if (Number.isFinite(audio.duration) && audio.duration > 0) {
+          audio.currentTime = Math.min(targetTime, Math.max(0, audio.duration - 0.1));
+        } else {
+          audio.currentTime = targetTime;
+        }
+      } catch {}
 
       if (!resumePlaying) {
         setIsSeeking(false);
