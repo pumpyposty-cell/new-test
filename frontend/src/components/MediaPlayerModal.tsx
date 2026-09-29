@@ -202,6 +202,13 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
           enableWorker: true,
           lowLatencyMode: false,
           backBufferLength: 90,
+          // Render Free can take longer to produce the first on-demand HLS
+          // segment. Give fragment requests more time and retry transient
+          // segment failures before treating playback as fatal.
+          fragLoadingTimeOut: 45000,
+          fragLoadingMaxRetry: 3,
+          fragLoadingRetryDelay: 1000,
+          fragLoadingMaxRetryTimeout: 8000,
           // Seedr sessions are stored in an HttpOnly cookie on the Render API.
           // Hls.js does not send cross-origin cookies unless this is enabled.
           xhrSetup: (xhr) => {
