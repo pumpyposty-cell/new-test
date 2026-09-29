@@ -1890,7 +1890,7 @@ def _safe_download_filename(filename: str, fallback: str) -> str:
 
 async def _stream_seedr_download(url: str):
     client = httpx.AsyncClient(timeout=None, follow_redirects=True)
-    request = client.build_request("GET", url, headers={"Accept": "*/*"})
+    request = client.build_request("GET", url, headers={"Accept": "*/*", "Accept-Encoding": "identity"})
     response = await client.send(request, stream=True)
 
     if response.status_code >= 400:
@@ -1907,7 +1907,7 @@ async def _stream_seedr_download(url: str):
 
     async def body():
         try:
-            async for chunk in response.aiter_bytes(1024 * 1024):
+            async for chunk in response.aiter_raw():
                 yield chunk
         finally:
             await response.aclose()
@@ -5418,7 +5418,7 @@ async def seedr_video_media(
     if not upstream_url:
         raise HTTPException(404, "Seedr returned no video presentation URL")
 
-    headers = {"Accept": "video/*,application/octet-stream,*/*"}
+    headers = {"Accept": "video/*,application/octet-stream,*/*", "Accept-Encoding": "identity"}
     range_header = request.headers.get("range")
     if range_header:
         headers["Range"] = range_header
@@ -5457,7 +5457,7 @@ async def seedr_video_media(
 
     async def body_stream():
         try:
-            async for chunk in response.aiter_bytes():
+            async for chunk in response.aiter_raw():
                 _record_media_bytes(file_id, len(chunk))
                 yield chunk
         finally:
@@ -5512,7 +5512,7 @@ async def seedr_audio_presentation_proxy(
     if not upstream_url:
         raise HTTPException(404, "Seedr returned no audio presentation URL")
 
-    headers = {"Accept": "video/*,audio/*,application/octet-stream,*/*"}
+    headers = {"Accept": "video/*,audio/*,application/octet-stream,*/*", "Accept-Encoding": "identity"}
     range_header = request.headers.get("range")
     if range_header:
         headers["Range"] = range_header
@@ -5551,7 +5551,7 @@ async def seedr_audio_presentation_proxy(
 
     async def body_stream():
         try:
-            async for chunk in response.aiter_bytes():
+            async for chunk in response.aiter_raw():
                 yield chunk
         finally:
             await response.aclose()
