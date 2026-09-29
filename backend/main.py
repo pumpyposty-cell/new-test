@@ -4631,7 +4631,26 @@ async def seedr_file_stream(
         #      Range support;
         #   3) otherwise use the existing HLS proxy.
         presentation_url = await seedr_v2_video_url(resolved_id)
-        if presentation_url and not await _presentation_is_hls(presentation_url):
+        is_hls_presentation = bool(presentation_url and await _presentation_is_hls(presentation_url))
+
+        # Files with multiple embedded audio tracks use the synthetic HLS
+        # presentation so HLS.js can switch audio renditions inside one player
+        # instead of running a second hidden <audio> element.
+        try:
+            dynamic_info = await _get_seedr_dynamic_hls_info(resolved_id)
+        except HTTPException:
+            dynamic_info = None
+
+        if dynamic_info and len(dynamic_info.get("audio") or []) > 1:
+            return {
+                "url": "/api/seedr/hls-master/" + quote(resolved_id, safe=""),
+                "externalUrl": presentation_url or _seedr_media_url(resolved_id, "video"),
+                "name": name or resolved_id,
+                "resolvedFileId": resolved_id,
+                "protocol": "hls-multi-audio",
+            }
+
+        if presentation_url and not is_hls_presentation:
             return {
                 "url": "/api/seedr/media/video/" + quote(resolved_id, safe=""),
                 "externalUrl": presentation_url,
@@ -4820,6 +4839,309 @@ def _track_language(stream: dict[str, Any]) -> str:
 def _track_title(stream: dict[str, Any], fallback: str) -> str:
     tags = stream.get("tags") if isinstance(stream.get("tags"), dict) else {}
     return str(tags.get("title") or tags.get("handler_name") or fallback).strip()
+
+
+
+_DYNAMIC_HLS_SEGMENT_SECONDS = 6.0
+_SEEDR_DYNAMIC_HLS_CACHE_SECONDS = 600
+_seedr_dynamic_hls_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
+async def _get_seedr_dynamic_hls_info(file_id: str) -> dict[str, Any]:
+    """Return cached metadata used to build a lightweight on-demand HLS presentation."""
+    now = asyncio.get_running_loop().time()
+    cached = _seedr_dynamic_hls_cache.get(file_id)
+    if cached and cached[0] > now:
+        return cached[1]
+
+    data = await _ffprobe_seedr_file(file_id)
+    streams = data.get("streams") if isinstance(data, dict) else []
+    if not isinstance(streams, list):
+        streams = []
+
+    video_streams = [
+        stream for stream in streams
+        if isinstance(stream, dict)
+        and str(stream.get("codec_type") or "").lower() == "video"
+    ]
+    audio_streams = [
+        stream for stream in streams
+        if isinstance(stream, dict)
+        and str(stream.get("codec_type") or "").lower() == "audio"
+    ]
+    if not video_streams:
+        raise HTTPException(404, "Seedr file has no video stream")
+    if len(audio_streams) < 2:
+        raise HTTPException(409, "Seedr file does not contain multiple audio tracks")
+
+    format_info = data.get("format") if isinstance(data.get("format"), dict) else {}
+    duration = float(format_info.get("duration") or 0)
+    if duration <= 0:
+        durations = [
+            float(stream.get("duration") or 0)
+            for stream in streams
+            if isinstance(stream, dict)
+        ]
+        duration = max(durations or [0])
+
+    if duration <= 0:
+        raise HTTPException(502, "Seedr media duration could not be determined")
+
+    video = video_streams[0]
+    result = {
+        "duration": duration,
+        "video": {
+            "codec": str(video.get("codec_name") or "").lower(),
+            "width": int(video.get("width") or 0),
+            "height": int(video.get("height") or 0),
+            "bitRate": int(float(video.get("bit_rate") or 0)) if str(video.get("bit_rate") or "").strip() else 0,
+        },
+        "audio": [
+            {
+                "index": index,
+                "language": _track_language(stream),
+                "title": _track_title(stream, ""),
+                "codec": str(stream.get("codec_name") or "").lower(),
+                "channels": int(stream.get("channels") or 0),
+                "default": bool(
+                    (stream.get("disposition") if isinstance(stream.get("disposition"), dict) else {}).get("default")
+                ),
+            }
+            for index, stream in enumerate(audio_streams)
+        ],
+    }
+    _seedr_dynamic_hls_cache[file_id] = (
+        now + _SEEDR_DYNAMIC_HLS_CACHE_SECONDS,
+        result,
+    )
+    return result
+
+
+def _dynamic_hls_track_label(track: dict[str, Any], index: int) -> tuple[str, str]:
+    code = str(track.get("language") or "").strip().lower()
+    language_names = {
+        "en": "English", "eng": "English",
+        "hi": "Hindi", "hin": "Hindi",
+        "fr": "French", "fra": "French",
+        "de": "German", "deu": "German",
+        "es": "Spanish", "spa": "Spanish",
+        "it": "Italian", "ita": "Italian",
+        "pt": "Portuguese", "por": "Portuguese",
+        "ru": "Russian", "rus": "Russian",
+        "ja": "Japanese", "jpn": "Japanese",
+        "ko": "Korean", "kor": "Korean",
+        "zh": "Chinese", "zho": "Chinese",
+        "ar": "Arabic", "ara": "Arabic",
+        "bn": "Bengali", "ben": "Bengali",
+    }
+    language = language_names.get(code, code.upper() if code else f"Audio {index + 1}")
+    title = str(track.get("title") or "").strip()
+    if title and title.lower() != language.lower():
+        return language, f"{language} ({title})"
+    return language, language
+
+
+def _dynamic_hls_playlist(file_id: str, kind: str, track: int | None, info: dict[str, Any]) -> str:
+    duration = float(info["duration"])
+    segment = _DYNAMIC_HLS_SEGMENT_SECONDS
+    count = max(1, int((duration + segment - 1e-6) // segment))
+    if duration > count * segment:
+        count += 1
+
+    lines = [
+        "#EXTM3U",
+        "#EXT-X-VERSION:3",
+        f"#EXT-X-TARGETDURATION:{int(segment)}",
+        "#EXT-X-PLAYLIST-TYPE:VOD",
+        "#EXT-X-MEDIA-SEQUENCE:0",
+    ]
+
+    for index in range(count):
+        start = index * segment
+        length = min(segment, max(0.001, duration - start))
+        if kind == "video":
+            uri = (
+                "/api/seedr/hls-master/"
+                + quote(file_id, safe="")
+                + f"/video/{index}.ts"
+            )
+        else:
+            uri = (
+                "/api/seedr/hls-master/"
+                + quote(file_id, safe="")
+                + f"/audio/{int(track or 0)}/{index}.ts"
+            )
+        lines.extend([f"#EXTINF:{length:.3f},", uri])
+
+    lines.append("#EXT-X-ENDLIST")
+    return "\n".join(lines) + "\n"
+
+
+@app.get("/api/seedr/hls-master/{file_id}")
+async def seedr_dynamic_hls_master(file_id: str):
+    if not current_seedr_token():
+        raise HTTPException(503, "Seedr is not configured")
+
+    info = await _get_seedr_dynamic_hls_info(file_id)
+    audio_group = "seedr-audio"
+    lines = ["#EXTM3U", "#EXT-X-VERSION:3", "#EXT-X-INDEPENDENT-SEGMENTS"]
+
+    for index, track in enumerate(info["audio"]):
+        language, label = _dynamic_hls_track_label(track, index)
+        default = "YES" if track.get("default") or (index == 0 and not any(item.get("default") for item in info["audio"])) else "NO"
+        auto_select = "YES"
+        lines.append(
+            "#EXT-X-MEDIA:"
+            f'TYPE=AUDIO,GROUP-ID="{audio_group}",NAME="{label.replace(chr(34), "_")}",'
+            f'LANGUAGE="{language.lower()}",DEFAULT={default},AUTOSELECT={auto_select},'
+            f'URI="/api/seedr/hls-master/{quote(file_id, safe="")}/audio/{index}.m3u8"'
+        )
+
+    video = info["video"]
+    codecs = str(video.get("codec") or "").lower()
+    codec_string = "avc1.42E01E"
+    if codecs in {"h264", "avc1"}:
+        codec_string = "avc1.42E01E"
+    elif codecs in {"hevc", "h265"}:
+        codec_string = "hvc1"
+    elif codecs:
+        codec_string = codecs
+
+    bandwidth = max(500_000, int(video.get("bitRate") or 4_000_000))
+    resolution = ""
+    if int(video.get("width") or 0) and int(video.get("height") or 0):
+        resolution = f',RESOLUTION={int(video["width"])}x{int(video["height"])}'
+
+    lines.extend([
+        f'#EXT-X-STREAM-INF:BANDWIDTH={bandwidth},CODECS="{codec_string}"{resolution},AUDIO="{audio_group}"',
+        f'/api/seedr/hls-master/{quote(file_id, safe="")}/video.m3u8',
+    ])
+    return Response(
+        content="\n".join(lines) + "\n",
+        media_type="application/vnd.apple.mpegurl",
+        headers={
+            "Cache-Control": "no-store",
+            "Access-Control-Allow-Origin": "*",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@app.get("/api/seedr/hls-master/{file_id}/video.m3u8")
+async def seedr_dynamic_hls_video_playlist(file_id: str):
+    if not current_seedr_token():
+        raise HTTPException(503, "Seedr is not configured")
+    info = await _get_seedr_dynamic_hls_info(file_id)
+    return Response(
+        content=_dynamic_hls_playlist(file_id, "video", None, info),
+        media_type="application/vnd.apple.mpegurl",
+        headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
+    )
+
+
+@app.get("/api/seedr/hls-master/{file_id}/audio/{track}.m3u8")
+async def seedr_dynamic_hls_audio_playlist(file_id: str, track: int):
+    if not current_seedr_token():
+        raise HTTPException(503, "Seedr is not configured")
+    info = await _get_seedr_dynamic_hls_info(file_id)
+    if track < 0 or track >= len(info["audio"]):
+        raise HTTPException(404, "Audio track not found")
+    return Response(
+        content=_dynamic_hls_playlist(file_id, "audio", track, info),
+        media_type="application/vnd.apple.mpegurl",
+        headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
+    )
+
+
+async def _run_dynamic_hls_segment(file_id: str, kind: str, segment_index: int, track: int | None = None) -> Response:
+    if not current_seedr_token():
+        raise HTTPException(503, "Seedr is not configured")
+
+    info = await _get_seedr_dynamic_hls_info(file_id)
+    duration = float(info["duration"])
+    segment = _DYNAMIC_HLS_SEGMENT_SECONDS
+    start = segment_index * segment
+    if segment_index < 0 or start >= duration:
+        raise HTTPException(404, "HLS segment not found")
+    length = min(segment, duration - start)
+    source_url = await _seedr_media_source_url(file_id)
+
+    if kind == "audio":
+        if track is None or track < 0 or track >= len(info["audio"]):
+            raise HTTPException(404, "Audio track not found")
+        command = [
+            "ffmpeg", "-v", "error", "-nostdin",
+            "-ss", f"{start:.3f}",
+            "-i", source_url,
+            "-t", f"{length:.3f}",
+            "-map", f"0:a:{track}",
+            "-vn", "-sn", "-dn",
+            "-c:a", "aac", "-b:a", "192k",
+            "-ac", "2", "-ar", "48000",
+            "-af", "aresample=async=1:first_pts=0",
+            "-avoid_negative_ts", "make_zero",
+            "-f", "mpegts",
+            "pipe:1",
+        ]
+    else:
+        codec = str(info["video"].get("codec") or "").lower()
+        command = [
+            "ffmpeg", "-v", "error", "-nostdin",
+            "-ss", f"{start:.3f}",
+            "-i", source_url,
+            "-t", f"{length:.3f}",
+            "-map", "0:v:0",
+            "-an", "-sn", "-dn",
+        ]
+        if codec in {"h264", "avc1"}:
+            command += [
+                "-c:v", "copy",
+                "-bsf:v", "h264_mp4toannexb",
+            ]
+        else:
+            command += [
+                "-c:v", "libx264",
+                "-preset", "veryfast",
+                "-crf", "23",
+                "-pix_fmt", "yuv420p",
+            ]
+        command += ["-avoid_negative_ts", "make_zero", "-f", "mpegts", "pipe:1"]
+
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(503, "FFmpeg is not installed on the media server") from exc
+
+    stdout, stderr = await process.communicate()
+    if process.returncode != 0:
+        detail = stderr.decode("utf-8", errors="replace")[-1200:]
+        raise HTTPException(502, detail or "HLS segment generation failed")
+
+    _record_media_bytes(file_id, len(stdout))
+    return Response(
+        content=stdout,
+        media_type="video/mp2t",
+        headers={
+            "Cache-Control": "no-store",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Expose-Headers": "Content-Length",
+        },
+    )
+
+
+@app.get("/api/seedr/hls-master/{file_id}/video/{segment_index}.ts")
+async def seedr_dynamic_hls_video_segment(file_id: str, segment_index: int):
+    return await _run_dynamic_hls_segment(file_id, "video", segment_index)
+
+
+@app.get("/api/seedr/hls-master/{file_id}/audio/{track}/{segment_index}.ts")
+async def seedr_dynamic_hls_audio_segment(file_id: str, track: int, segment_index: int):
+    return await _run_dynamic_hls_segment(file_id, "audio", segment_index, track)
+
 
 
 @app.get("/api/seedr/media-info/{file_id}")
