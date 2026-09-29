@@ -4652,7 +4652,10 @@ async def seedr_file_stream(
                 resolved_id,
             )
             return {
-                "url": "/api/seedr/media/video/" + quote(resolved_id, safe=""),
+                # Explicitly request audio track 0 from Seedr's V2
+                # presentation. Some single-audio files expose a silent
+                # default presentation unless the audio rendition is named.
+                "url": "/api/seedr/media/video/" + quote(resolved_id, safe="") + "?audio=0",
                 "externalUrl": presentation_url,
                 "name": name or resolved_id,
                 "resolvedFileId": resolved_id,
@@ -5442,7 +5445,10 @@ async def seedr_video_media(
     if audio is not None:
         return await _stream_selected_audio(file_id, audio, start=start)
 
-    upstream_url = await seedr_v2_video_url(file_id)
+    # Supplying an explicit audio rendition makes Seedr include the
+    # audio track in presentations that otherwise return a silent default
+    # video presentation.
+    upstream_url = await seedr_v2_video_url(file_id, audio_index=audio)
     if not upstream_url:
         raise HTTPException(404, "Seedr returned no video presentation URL")
 
