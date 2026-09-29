@@ -374,7 +374,8 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     if (!sourceUrl) return () => {};
 
     setTrackNotice('Loading subtitles…');
-    void fetch(sourceUrl)
+    const subtitleUrl = sourceUrl.startsWith('/') ? API_BASE + sourceUrl : sourceUrl;
+    void fetch(subtitleUrl, { credentials: 'include' })
       .then(async response => {
         if (!response.ok) throw new Error('Subtitle request failed: ' + response.status);
         const text = await response.text();
