@@ -692,9 +692,10 @@ export const api = {
     };
   },
 
-  async getSeedrAudioPresentationUrl(fileId: string, track: number): Promise<{ url: string }> {
+  async getSeedrAudioPresentationUrl(fileId: string, track: number, start = 0): Promise<{ url: string; protocol?: string; start?: number }> {
     const params = new URLSearchParams({
       track: String(track),
+      start: String(Math.max(0, Number(start) || 0)),
     });
     const res = await apiFetch(
       '/api/seedr/media/audio-url/' + encodeURIComponent(fileId) + '?' + params.toString()
@@ -703,11 +704,14 @@ export const api = {
     let data: any = null;
     try { data = body ? JSON.parse(body) : null; } catch {}
     if (!res.ok) throw new Error(data?.error || body || 'Failed to resolve Seedr audio presentation');
+
+    const resolved = typeof data?.url === 'string' ? data.url.trim() : '';
+    if (!resolved) throw new Error('Seedr returned an empty audio playback URL');
+
     return {
-      // Use the lightweight byte proxy so browser CORS and Range requests are
-      // handled by our API without asking Render to transcode the media.
-      url: API_BASE + '/api/seedr/media/audio-proxy/' +
-        encodeURIComponent(fileId) + '?track=' + encodeURIComponent(String(track)),
+      url: resolved.startsWith('/') ? API_BASE + resolved : resolved,
+      protocol: typeof data?.protocol === 'string' ? data.protocol : undefined,
+      start: Number.isFinite(Number(data?.start)) ? Number(data.start) : 0,
     };
   },
 
