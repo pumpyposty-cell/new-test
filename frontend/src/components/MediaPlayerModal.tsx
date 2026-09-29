@@ -511,8 +511,6 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, [isVideo]);
 
-  if (!file) return null;
-
   const activeSubtitleCue = subtitleCues.find(
     cue => currentTime >= cue.start && currentTime < cue.end
   );
@@ -1028,6 +1026,8 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
       }
     }
   };
+
+  if (!file) return null;
 
   // Minimized floating player (for multitasking while downloading or browsing folders)
   if (isMinimized) {
