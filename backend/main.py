@@ -5695,7 +5695,6 @@ async def seedr_file_subtitle(
         content=text,
         media_type="text/vtt; charset=utf-8",
         headers={
-            "Access-Control-Allow-Origin": "*",
             "Cache-Control": "no-store",
             "Content-Disposition": "inline; filename=\"" + requested_name.replace('"', '_') + "\"",
         },
