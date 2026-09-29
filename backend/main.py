@@ -4702,7 +4702,6 @@ async def seedr_hls_manifest(file_id: str):
         media_type="application/vnd.apple.mpegurl",
         headers={
             "Cache-Control": "no-store",
-            "Access-Control-Allow-Origin": "*",
             "X-Content-Type-Options": "nosniff",
         },
     )
@@ -5021,7 +5020,6 @@ async def seedr_dynamic_hls_master(file_id: str):
         media_type="application/vnd.apple.mpegurl",
         headers={
             "Cache-Control": "no-store",
-            "Access-Control-Allow-Origin": "*",
             "X-Content-Type-Options": "nosniff",
         },
     )
@@ -5035,7 +5033,7 @@ async def seedr_dynamic_hls_video_playlist(file_id: str):
     return Response(
         content=_dynamic_hls_playlist(file_id, "video", None, info),
         media_type="application/vnd.apple.mpegurl",
-        headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -5049,7 +5047,7 @@ async def seedr_dynamic_hls_audio_playlist(file_id: str, track: int):
     return Response(
         content=_dynamic_hls_playlist(file_id, "audio", track, info),
         media_type="application/vnd.apple.mpegurl",
-        headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"},
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -5127,7 +5125,6 @@ async def _run_dynamic_hls_segment(file_id: str, kind: str, segment_index: int, 
         media_type="video/mp2t",
         headers={
             "Cache-Control": "no-store",
-            "Access-Control-Allow-Origin": "*",
             "Access-Control-Expose-Headers": "Content-Length",
         },
     )
