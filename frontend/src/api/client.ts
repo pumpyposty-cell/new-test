@@ -703,7 +703,12 @@ export const api = {
     let data: any = null;
     try { data = body ? JSON.parse(body) : null; } catch {}
     if (!res.ok) throw new Error(data?.error || body || 'Failed to resolve Seedr audio presentation');
-    return { url: String(data?.url || '') };
+    return {
+      // Use the lightweight byte proxy so browser CORS and Range requests are
+      // handled by our API without asking Render to transcode the media.
+      url: API_BASE + '/api/seedr/media/audio-proxy/' +
+        encodeURIComponent(fileId) + '?track=' + encodeURIComponent(String(track)),
+    };
   },
 
   async getSeedrMediaInfo(fileId: string): Promise<{
