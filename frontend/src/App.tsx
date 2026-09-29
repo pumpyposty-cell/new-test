@@ -843,7 +843,25 @@ export default function App() {
       const activeTaskId = seedrNotice?.taskId;
       if (activeTaskId && seedrNotice?.status !== 'completed') {
         void api.getSeedrTaskProgress(activeTaskId).then(progressResult => {
-          if (progressResult.status === 'not_found') return;
+          if (progressResult.status === 'not_found') {
+            // The browser can retain a task id after Seedr has removed it.
+            // Stop the background refresh immediately and clear the stale
+            // persisted notice so the UI does not keep polling a 404 forever.
+            const waiterKey = String(activeTaskId);
+            const waiter = seedrPrepareWaiters.current[waiterKey];
+            if (waiter) {
+              delete seedrPrepareWaiters.current[waiterKey];
+              waiter.reject(new Error('Seedr could not find the loading task.'));
+            }
+            setSeedrNotice(prev =>
+              prev && String(prev.taskId) === String(activeTaskId) ? null : prev
+            );
+            setSeedrAddBlockedNotice(null);
+            try {
+              window.localStorage.removeItem(seedrNoticeStorageKey);
+            } catch {}
+            return;
+          }
           const progress = Math.max(0, Math.min(100, Number(progressResult.progress) || 0));
           const progressName = String(progressResult.name || '').trim();
           const progressFolderId = String(progressResult.folderId || '').trim();
