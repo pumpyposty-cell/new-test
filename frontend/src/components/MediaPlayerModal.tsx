@@ -189,6 +189,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     const isHlsStream =
       /\.m3u8(?:$|\?)/i.test(streamUrl) ||
       streamUrl.includes('/api/seedr/hls/') ||
+      streamUrl.includes('/api/seedr/hls-master/') ||
       streamUrl.includes('/api/media/hls/');
 
     if (isHlsStream && isVideo && Hls.isSupported()) {
@@ -235,6 +236,12 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
         });
         hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, syncHlsTracks);
         hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, syncHlsTracks);
+        hls.on(Hls.Events.AUDIO_TRACK_SWITCHING, () => {
+          setTrackNotice('Switching audio…');
+        });
+        hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, () => {
+          setTrackNotice('');
+        });
         hls.on(Hls.Events.ERROR, (_event, data) => {
           if (!data?.fatal) return;
 
@@ -632,9 +639,9 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     const hls = hlsRef.current;
 
     if (hls?.audioTracks?.[next]) {
-      hls.audioTrack = next;
       setSelectedAudioIndex(next);
-      setTrackNotice('');
+      setTrackNotice('Switching audio…');
+      hls.audioTrack = next;
       return;
     }
 
