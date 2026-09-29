@@ -692,6 +692,20 @@ export const api = {
     };
   },
 
+  async getSeedrAudioPresentationUrl(fileId: string, track: number): Promise<{ url: string }> {
+    const params = new URLSearchParams({
+      track: String(track),
+    });
+    const res = await apiFetch(
+      '/api/seedr/media/audio-url/' + encodeURIComponent(fileId) + '?' + params.toString()
+    );
+    const body = await res.text();
+    let data: any = null;
+    try { data = body ? JSON.parse(body) : null; } catch {}
+    if (!res.ok) throw new Error(data?.error || body || 'Failed to resolve Seedr audio presentation');
+    return { url: String(data?.url || '') };
+  },
+
   async getSeedrMediaInfo(fileId: string): Promise<{
     name: string;
     audioTracks: Array<{
