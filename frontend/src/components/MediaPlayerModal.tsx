@@ -67,6 +67,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
   const [trackNotice, setTrackNotice] = useState('');
   const [subtitleSearchError, setSubtitleSearchError] = useState('');
   const [tracksLoading, setTracksLoading] = useState(false);
+  const [subtitleBlobUrl, setSubtitleBlobUrl] = useState('');
 
   const resumeTimeRef = useRef(0);
   const resumePlayingRef = useRef(false);
@@ -349,9 +350,71 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
   }, [file?.id, file?.streamId, isVideo]);
 
   useEffect(() => {
-    const track = subtitleTrackRef.current?.track;
-    if (track) track.mode = selectedSubtitleIndex === undefined ? 'disabled' : 'showing';
+    let cancelled = false;
+    let objectUrl = '';
+
+    if (selectedSubtitleIndex === undefined) {
+      setSubtitleBlobUrl(prev => {
+        if (prev) URL.revokeObjectURL(prev);
+        return '';
+      });
+      const track = subtitleTrackRef.current?.track;
+      if (track) track.mode = 'disabled';
+      return () => {};
+    }
+
+    const selected = subtitleTracks.find(track => track.index === selectedSubtitleIndex);
+    const sourceUrl = String(selected?.url || '').trim();
+    if (!sourceUrl) return () => {};
+
+    setTrackNotice('Loading subtitles…');
+    void fetch(sourceUrl, { credentials: 'include' })
+      .then(async response => {
+        if (!response.ok) throw new Error('Subtitle request failed: ' + response.status);
+        const text = await response.text();
+        if (!/^\\s*WEBVTT(?:\\s|$)/i.test(text)) {
+          throw new Error('Subtitle response is not valid WebVTT');
+        }
+        return new Blob([text], { type: 'text/vtt' });
+      })
+      .then(blob => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setSubtitleBlobUrl(prev => {
+          if (prev) URL.revokeObjectURL(prev);
+          return objectUrl;
+        });
+        setTrackNotice('');
+      })
+      .catch(error => {
+        if (cancelled) return;
+        console.warn('[MEDIA][SUBTITLES] failed to load', error);
+        setSubtitleBlobUrl(prev => {
+          if (prev) URL.revokeObjectURL(prev);
+          return '';
+        });
+        setTrackNotice('Unable to load subtitles.');
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
   }, [selectedSubtitleIndex, subtitleTracks]);
+
+  useEffect(() => {
+    const trackElement = subtitleTrackRef.current;
+    if (!trackElement || selectedSubtitleIndex === undefined || !subtitleBlobUrl) return;
+
+    const activate = () => {
+      try {
+        trackElement.track.mode = 'showing';
+      } catch {}
+    };
+    trackElement.addEventListener('load', activate, { once: true });
+    activate();
+    return () => trackElement.removeEventListener('load', activate);
+  }, [selectedSubtitleIndex, subtitleBlobUrl]);
 
   useEffect(() => {
     const hls = hlsRef.current;
@@ -1092,7 +1155,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
                   ref={subtitleTrackRef}
                   key={selectedSubtitleIndex}
                   kind="subtitles"
-                  src={subtitleTracks.find(track => track.index === selectedSubtitleIndex)?.url}
+                  src={subtitleBlobUrl}
                   srcLang={subtitleTracks.find(track => track.index === selectedSubtitleIndex)?.language || 'en'}
                   label={subtitleTracks.find(track => track.index === selectedSubtitleIndex)?.title || subtitleTracks.find(track => track.index === selectedSubtitleIndex)?.language?.toUpperCase() || 'Subtitles'}
                   default
