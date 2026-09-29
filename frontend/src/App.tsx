@@ -2738,41 +2738,30 @@ export default function App() {
 
         {seedrDownloadActive && seedrNotice && (
           <div className="sticky top-2 z-40 mb-3 rounded-2xl border border-emerald-500/30 bg-slate-950/95 px-3.5 py-3.5 shadow-xl shadow-emerald-950/20 backdrop-blur-md sm:px-4">
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400">
-                <Loader2 className="h-5 w-5 animate-spin" />
-              </div>
+            <div className="flex items-center gap-3">
+              <Loader2 className="h-5 w-5 shrink-0 animate-spin text-emerald-400" />
               <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                  <span className="text-xs font-bold text-emerald-300">Seedr download in progress</span>
-                  <span className="text-[10px] font-semibold text-slate-500">• One download at a time</span>
+                <div className="text-xs font-bold text-slate-100 truncate">
+                  Loading {seedrNotice.name || 'torrent'} in Seedr
                 </div>
-                <div className="mt-0.5 truncate text-sm font-semibold text-slate-100">
-                  {seedrNotice.name || 'Torrent'}
-                </div>
-                <div className="mt-1 flex items-center justify-between gap-3 text-[11px] text-slate-400">
-                  <span>
-                    {seedrNotice.status === 'waiting' ? 'Waiting for Seedr to start…' : 'Downloading…'}
-                  </span>
+                <div className="mt-0.5 flex items-center justify-between gap-3 text-[11px] text-slate-400">
+                  <span>{seedrNotice.status === 'waiting' ? 'Waiting for Seedr to start…' : 'Downloading…'}</span>
                   <span className="font-semibold text-emerald-300">
                     {Number(seedrNotice.progress || 0).toFixed(1)}%
                   </span>
                 </div>
                 <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-800">
                   <div
-                    className="h-full rounded-full bg-emerald-400 transition-[width] duration-700"
+                    className="h-full rounded-full bg-emerald-400 transition-all duration-500"
                     style={{ width: Math.max(0, Math.min(100, Number(seedrNotice.progress) || 0)) + '%' }}
                   />
-                </div>
-                <div className="mt-1.5 text-[10px] text-slate-500">
-                  Finish or cancel this download before starting another Seedr torrent.
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => void handleCancelSeedrDownload()}
                 disabled={isCancellingSeedr}
-                className="shrink-0 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[11px] font-bold text-rose-300 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                className="shrink-0 rounded-xl border border-rose-500/25 bg-rose-500/10 px-2.5 py-1.5 text-[10px] font-bold text-rose-300 hover:bg-rose-500/20 disabled:opacity-50"
               >
                 {isCancellingSeedr ? 'Cancelling…' : 'Cancel'}
               </button>
