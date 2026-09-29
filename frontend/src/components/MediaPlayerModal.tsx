@@ -1262,12 +1262,12 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
               onLoadedMetadata={onLoadedMetadata}
               onEnded={() => setIsPlaying(false)}
               onError={handleMediaError}>
-              {activeSubtitleCue && selectedSubtitleIndex !== undefined && (
-                <div className="absolute left-1/2 bottom-4 z-20 max-w-[90%] -translate-x-1/2 rounded-md bg-black/75 px-3 py-1.5 text-center text-sm font-medium leading-6 text-white shadow-lg backdrop-blur-sm whitespace-pre-line pointer-events-none md:text-base">
-                  {activeSubtitleCue.text}
-                </div>
-              )}
             </video>
+            {activeSubtitleCue && selectedSubtitleIndex !== undefined && (
+              <div className="absolute left-1/2 bottom-4 z-20 max-w-[90%] -translate-x-1/2 rounded-md bg-black/75 px-3 py-1.5 text-center text-sm font-medium leading-6 text-white shadow-lg backdrop-blur-sm whitespace-pre-line pointer-events-none md:text-base">
+                {activeSubtitleCue.text}
+              </div>
+            )}
           ) : (
             <div className="flex flex-col items-center justify-center p-8 text-center gap-4">
               <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 animate-pulse-subtle">
