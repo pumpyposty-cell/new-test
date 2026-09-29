@@ -4633,23 +4633,11 @@ async def seedr_file_stream(
         presentation_url = await seedr_v2_video_url(resolved_id)
         is_hls_presentation = bool(presentation_url and await _presentation_is_hls(presentation_url))
 
-        # Files with multiple embedded audio tracks use the synthetic HLS
-        # presentation so HLS.js can switch audio renditions inside one player
-        # instead of running a second hidden <audio> element.
-        try:
-            dynamic_info = await _get_seedr_dynamic_hls_info(resolved_id)
-        except HTTPException:
-            dynamic_info = None
-
-        if dynamic_info and len(dynamic_info.get("audio") or []) > 1:
-            return {
-                "url": "/api/seedr/hls-master/" + quote(resolved_id, safe=""),
-                "externalUrl": presentation_url or _seedr_media_url(resolved_id, "video"),
-                "name": name or resolved_id,
-                "resolvedFileId": resolved_id,
-                "protocol": "hls-multi-audio",
-            }
-
+        # Keep alternate-audio playback browser-side. Do not generate
+        # synthetic HLS or run FFmpeg for normal multi-audio playback on the
+        # Render Free instance. The player uses the primary presentation for
+        # video and asks Seedr for a presentation URL for the selected audio
+        # track when needed.
         if presentation_url and not is_hls_presentation:
             return {
                 "url": "/api/seedr/media/video/" + quote(resolved_id, safe=""),
@@ -5436,6 +5424,32 @@ async def seedr_video_media(
         media_type=response.headers.get("content-type", "video/mp4"),
         headers=response_headers,
     )
+
+
+@app.get("/api/seedr/media/audio-url/{file_id}")
+async def seedr_audio_presentation_url(
+    file_id: str,
+    track: int = Query(0, ge=0),
+):
+    """Resolve a Seedr presentation URL for one embedded audio track.
+
+    This endpoint does not transcode/remux media. It only asks Seedr for the
+    browser presentation URL, keeping alternate-audio switching lightweight
+    enough for the Render Free instance.
+    """
+    if not current_seedr_token():
+        raise HTTPException(503, "Seedr is not configured")
+
+    url = await seedr_v2_video_url(file_id, audio_index=track)
+    if not url:
+        raise HTTPException(404, "Seedr returned no audio presentation URL")
+
+    return {
+        "url": url,
+        "track": track,
+        "fileId": file_id,
+        "protocol": "seedr-direct-audio",
+    }
 
 
 @app.get("/api/seedr/media/audio/{file_id}")
