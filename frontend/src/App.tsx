@@ -3500,7 +3500,7 @@ export default function App() {
                   </p>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
                     <a
-                      href="https://www.seedr.cc/"
+                      href="https://www.seedr.cc/api/v0.1/console/tokens"
                       target="_blank"
                       rel="noreferrer"
                       className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-100 transition hover:bg-slate-700"
