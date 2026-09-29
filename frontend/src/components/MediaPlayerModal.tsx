@@ -128,6 +128,8 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
   const alternateAudioRef = useRef<HTMLAudioElement>(null);
   const alternateAudioIndexRef = useRef<number | undefined>(undefined);
   const primaryAudioIndexRef = useRef<number | undefined>(undefined);
+  const audioTrackCountRef = useRef(0);
+  const isMutedRef = useRef(false);
   const alternateAudioRequestRef = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -140,6 +142,8 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     setIsPlaying(true);
     setMediaError('');
     setIsSeeking(false);
+    setIsMuted(false);
+    isMutedRef.current = false;
     setUsingDirectFallback(false);
     hlsActiveRef.current = false;
     const initialSubtitles = file?.subtitleTracks || [];
@@ -157,6 +161,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
       alternateAudio.load();
     }
     const initialAudioTracks = file?.audioTracks || [];
+    audioTrackCountRef.current = initialAudioTracks.length;
     const initialAudio = initialAudioTracks.find((track: any) => track.default) || initialAudioTracks[0];
     primaryAudioIndexRef.current = initialAudio?.index;
     setAudioTracks(initialAudioTracks);
@@ -191,14 +196,16 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     const restorePlaying = resumePlayingRef.current || (!media.paused && duration > 0);
 
     const handleLoaded = () => {
-      if (
-        isVideo &&
-        streamUrl.includes('/api/seedr/media/video/') &&
-        audioTracks.length > 1
-      ) {
-        media.muted = true;
-      } else if (isVideo && streamUrl.includes('/api/seedr/media/video/')) {
-        media.muted = isMuted;
+      if (isVideo && streamUrl.includes('/api/seedr/media/video/')) {
+        // Single-audio files must stay on Seedr's original native
+        // video+audio presentation. Multi-audio only becomes muted after
+        // the user explicitly selects an alternate track.
+        media.volume = isMutedRef.current ? 0 : volume;
+        media.muted =
+          audioTrackCountRef.current > 1 &&
+          alternateAudioIndexRef.current !== undefined
+            ? true
+            : isMutedRef.current;
       }
       if (Number.isFinite(restoreTime) && restoreTime > 0 && Number.isFinite(media.duration)) {
         const safeTime = Math.min(restoreTime, Math.max(0, media.duration - 0.25));
@@ -362,7 +369,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
       media.load();
       hlsActiveRef.current = false;
     };
-  }, [file?.id, file?.streamUrl, file?.externalStreamUrl, isVideo, audioTracks.length, isMuted]);
+  }, [file?.id, file?.streamUrl, file?.externalStreamUrl, isVideo]);
 
 
 
@@ -385,6 +392,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
         const sidecarSubtitles = Array.isArray(file.subtitleTracks) ? file.subtitleTracks : [];
 
         setAudioTracks(realAudio);
+        audioTrackCountRef.current = realAudio.length;
         const defaultAudio = realAudio.find((track: any) => track.default) || realAudio[0];
         primaryAudioIndexRef.current = defaultAudio?.index;
         setSelectedAudioIndex(prev =>
@@ -682,7 +690,9 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
   const handleVolume = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseFloat(e.target.value);
     setVolume(val);
-    setIsMuted(val === 0);
+    const muted = val === 0;
+    setIsMuted(muted);
+    isMutedRef.current = muted;
     if (mediaRef.current) {
       mediaRef.current.volume = val;
     }
@@ -707,6 +717,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
         alternateAudio.muted = false;
       }
       setIsMuted(false);
+      isMutedRef.current = false;
     } else {
       media.volume = 0;
       media.muted = true;
@@ -715,6 +726,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
         alternateAudio.muted = true;
       }
       setIsMuted(true);
+      isMutedRef.current = true;
     }
   };
 
@@ -858,7 +870,8 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     alternateAudioIndexRef.current = undefined;
 
     if (restoreVideoAudio && media) {
-      media.muted = isMuted;
+      media.volume = isMutedRef.current ? 0 : volume;
+      media.muted = isMutedRef.current;
     }
   };
 
@@ -907,7 +920,8 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
       // Single-audio direct streams use native Seedr audio and do not
       // need a second element. Multi-audio streams use the hybrid path.
       if (audioTracks.length <= 1) {
-        media.muted = isMuted;
+        media.volume = isMutedRef.current ? 0 : volume;
+        media.muted = isMutedRef.current;
         media.currentTime = position;
         if (wasPlaying) {
           media.play()
@@ -956,7 +970,8 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
       if (alternateAudioIndexRef.current !== undefined) {
         clearAlternateAudio(true);
       }
-      media.muted = isMuted;
+      media.volume = isMutedRef.current ? 0 : volume;
+      media.muted = isMutedRef.current;
       return;
     }
 
