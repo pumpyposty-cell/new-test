@@ -1354,14 +1354,14 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
               )}
 
               {isVideo && (
-                <label className="flex items-center gap-2 rounded-xl border border-slate-700/80 bg-slate-800/90 px-2.5 py-1.5 shadow-sm">
+                <label className="flex items-center gap-1 rounded-xl border border-slate-700/80 bg-slate-800/90 px-1.5 py-1.5 shadow-sm shrink-0">
                   <Captions className="h-4 w-4 shrink-0 text-cyan-400" />
                   <span className="hidden text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:inline">Subs</span>
                   <select
                     disabled={tracksLoading || (hlsSubtitleTracks.length === 0 && subtitleTracks.length === 0)}
                     value={selectedHlsSubtitleIndex !== undefined ? 'hls:' + selectedHlsSubtitleIndex : selectedSubtitleIndex !== undefined ? 'external:' + selectedSubtitleIndex : 'off'}
                     onChange={(e) => handleSubtitleTrackChange(e.target.value)}
-                    className="min-w-[110px] max-w-[185px] bg-transparent text-xs font-semibold text-slate-100 outline-none disabled:cursor-not-allowed disabled:text-slate-500"
+                    className="w-[78px] sm:w-[92px] md:w-[105px] bg-transparent text-[11px] font-semibold text-slate-100 outline-none disabled:cursor-not-allowed disabled:text-slate-500 truncate"
                     title={tracksLoading ? 'Loading subtitles' : 'Subtitles'}
                   >
                     <option value="off">{tracksLoading ? 'Loading…' : 'Subtitles Off'}</option>
