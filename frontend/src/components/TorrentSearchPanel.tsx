@@ -5,6 +5,7 @@ import {
   Loader2,
   Download,
   Play,
+  FolderOpen,
   Copy,
   ExternalLink,
   Users,
@@ -41,6 +42,14 @@ interface TorrentSearchPanelProps {
   onPlaySeedrFile?: (file: SeedrSearchFile) => void | Promise<void>;
   onDownloadSeedrFile?: (file: SeedrSearchFile) => void | Promise<void>;
   onCopySeedrFileUrl?: (file: SeedrSearchFile) => void | Promise<void>;
+  onOpenSeedrFiles?: (folderId?: string, folderPath?: string) => void;
+  seedrActiveDownload?: {
+    name: string;
+    folderId: string;
+    folderPath?: string;
+    status: string;
+    progress: number;
+  } | null;
 }
 
 function formatPublished(value?: string) {
@@ -50,7 +59,7 @@ function formatPublished(value?: string) {
   return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-export const TorrentSearchPanel: React.FC<TorrentSearchPanelProps> = ({ onPrepare, onCancelPrepare, onOpenProgress, seedrFiles = [], seedrDeletedFolderIds = [], onPlaySeedrFile, onDownloadSeedrFile, onCopySeedrFileUrl }) => {
+export const TorrentSearchPanel: React.FC<TorrentSearchPanelProps> = ({ onPrepare, onCancelPrepare, onOpenProgress, seedrFiles = [], seedrDeletedFolderIds = [], onPlaySeedrFile, onDownloadSeedrFile, onCopySeedrFileUrl, onOpenSeedrFiles, seedrActiveDownload = null }) => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<TorrentSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -121,7 +130,11 @@ export const TorrentSearchPanel: React.FC<TorrentSearchPanelProps> = ({ onPrepar
     const deletedIds = new Set(seedrDeletedFolderIds.map(id => String(id)));
     const local = preparedByKeyRef.current.get(key);
     const localFiles = local?.files?.filter(file => !deletedIds.has(String(file.folderId))) || [];
-    return localFiles.length ? localFiles : findPreparedFiles(result);
+    const liveFiles = findPreparedFiles(result).filter(file => !deletedIds.has(String(file.folderId)));
+
+    const merged = new Map<string, SeedrSearchFile>();
+    [...localFiles, ...liveFiles].forEach(file => merged.set(String(file.id), file));
+    return Array.from(merged.values());
   };
 
   const preparedByKeyRef = useRef(new Map<string, { files: SeedrSearchFile[] }>());
@@ -214,6 +227,7 @@ export const TorrentSearchPanel: React.FC<TorrentSearchPanelProps> = ({ onPrepar
     event?.preventDefault();
 
     const trimmed = query.trim();
+    setQuery(trimmed);
     if (trimmed.length < 2) {
       setError('Enter at least 2 characters to search.');
       setResults([]);
@@ -605,33 +619,51 @@ export const TorrentSearchPanel: React.FC<TorrentSearchPanelProps> = ({ onPrepar
                         /\.(mkv|mp4|m4v|webm|mov|avi|m3u8|ts|mp3|wav|flac|aac|ogg|m4a)$/i.test(file.name)
                       ) || preparedFiles[0];
 
-                      if (preparedFiles.length > 0 && primaryFile) {
-                        const isPlaying = playingTorrentKey === torrentKey;
+                      const normalizedResultTitle = normalizeMatchText(result.title);
+                      const activeMatch = Boolean(
+                        seedrActiveDownload &&
+                        normalizedResultTitle &&
+                        (
+                          normalizeMatchText(seedrActiveDownload.name) === normalizedResultTitle ||
+                          normalizeMatchText(seedrActiveDownload.name).includes(normalizedResultTitle) ||
+                          normalizedResultTitle.includes(normalizeMatchText(seedrActiveDownload.name))
+                        )
+                      );
+                      const videoFiles = preparedFiles.filter(file =>
+                        /\.(mkv|mp4|m4v|webm|mov|avi|m3u8|ts)$/i.test(file.name)
+                      );
+                      const directPlayFile =
+                        !activeMatch && videoFiles.length === 1
+                          ? videoFiles[0]
+                          : undefined;
+
+                      if (activeMatch || (!directPlayFile && preparedFiles.length > 0)) {
+                        const folderId = String(
+                          activeMatch ? seedrActiveDownload?.folderId || preparedFiles[0]?.folderId || '' :
+                          preparedFiles[0]?.folderId || ''
+                        ).trim();
+                        const folderPath =
+                          (activeMatch ? seedrActiveDownload?.folderPath : '') ||
+                          preparedFiles[0]?.folderPath ||
+                          '';
+
                         return (
                           <div className="flex items-center gap-1.5 shrink-0">
                             <button
                               type="button"
-                              disabled={isPlaying}
-                              onClick={async () => {
-                                if (isPlaying) return;
-                                setPlayingTorrentKey(torrentKey);
-                                try {
-                                  await onPlaySeedrFile?.(primaryFile);
-                                } finally {
-                                  setPlayingTorrentKey(current => current === torrentKey ? null : current);
-                                }
-                              }}
-                              className="px-2 py-1.5 rounded-lg bg-emerald-400 text-slate-950 font-bold text-xs hover:bg-emerald-300 transition flex items-center gap-1 disabled:opacity-70 disabled:cursor-wait"
-                              title={isPlaying ? "Opening stream…" : "Play from Seedr"}
+                              onClick={() => onOpenSeedrFiles?.(folderId, folderPath)}
+                              className="px-2 py-1.5 rounded-lg bg-cyan-500 text-slate-950 font-bold text-xs hover:bg-cyan-400 transition flex items-center gap-1"
+                              title="Open all files in My Cloud Files"
                             >
-                              {isPlaying
-                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                : <Play className="w-3.5 h-3.5" />}
-                              <span className="hidden sm:inline">{isPlaying ? 'Loading…' : 'Play'}</span>
+                              <FolderOpen className="w-3.5 h-3.5" />
+                              <span>Open files</span>
+                              {activeMatch && (
+                                <span className="text-[10px] opacity-70">{Math.round(seedrActiveDownload?.progress || 0)}%</span>
+                              )}
                             </button>
                             <button
                               type="button"
-                              onClick={() => void onDownloadSeedrFile?.(primaryFile)}
+                              onClick={() => void onDownloadSeedrFile?.(directPlayFile || primaryFile)}
                               className="px-2 py-1.5 rounded-lg bg-slate-800 text-slate-200 font-bold text-xs hover:bg-slate-700 transition flex items-center gap-1"
                               title="Download from Seedr"
                             >
@@ -640,7 +672,7 @@ export const TorrentSearchPanel: React.FC<TorrentSearchPanelProps> = ({ onPrepar
                             </button>
                             <button
                               type="button"
-                              onClick={() => void onCopySeedrFileUrl?.(primaryFile)}
+                              onClick={() => void onCopySeedrFileUrl?.(directPlayFile || primaryFile)}
                               className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 transition"
                               title="Copy Seedr link"
                               aria-label="Copy Seedr link"
