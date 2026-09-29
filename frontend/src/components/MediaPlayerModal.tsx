@@ -837,23 +837,56 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
       const position = Number.isFinite(media.currentTime) ? media.currentTime : currentTime;
       const wasPlaying = !media.paused;
       setSelectedAudioIndex(next);
+
+      // Keep Seedr's primary/default audio on the native video element.
+      // Use the separate audio element only when the user selects an
+      // alternate embedded track.
+      if (primaryAudioIndexRef.current !== undefined && next === primaryAudioIndexRef.current) {
+        clearAlternateAudio(true);
+        media.currentTime = position;
+        media.muted = isMuted;
+        if (wasPlaying) {
+          media.play()
+            .then(() => {
+              setIsPlaying(true);
+              setTrackNotice('');
+            })
+            .catch(() => setIsPlaying(false));
+        } else {
+          setIsPlaying(false);
+          setTrackNotice('');
+        }
+        return;
+      }
+
       loadAlternateAudio(next, position, wasPlaying);
       return;
     }
 
     setTrackNotice('Selected audio track is not available in this stream.');
   };
-  // Direct Seedr presentations are used for the full-duration video, but
-  // their embedded audio is not dependable in HTMLVideoElement. As soon as
-  // media metadata contains audio tracks, attach the selected track to the
-  // synchronized audio element. This also restores audio after reopening a
-  // file without requiring a manual track change.
+  // Direct Seedr presentations keep their primary audio on the native
+  // video element. We only need the second audio element for an alternate
+  // track, which avoids making the whole player silent when the fallback
+  // audio stream is still being prepared.
   useEffect(() => {
     if (!isVideo || !file?.streamUrl?.includes('/api/seedr/media/video/')) return;
     if (!mediaRef.current || audioTracks.length === 0 || selectedAudioIndex === undefined) return;
-    if (alternateAudioIndexRef.current !== undefined) return;
 
     const media = mediaRef.current;
+    const primary = primaryAudioIndexRef.current;
+
+    if (primary !== undefined && selectedAudioIndex === primary) {
+      if (alternateAudioIndexRef.current !== undefined) {
+        clearAlternateAudio(true);
+      } else {
+        media.muted = isMuted;
+      }
+      return;
+    }
+
+    if (alternateAudioIndexRef.current === selectedAudioIndex) return;
+
     const position = Number.isFinite(media.currentTime) ? media.currentTime : currentTime;
     const shouldPlay = !media.paused || isPlaying;
     loadAlternateAudio(selectedAudioIndex, position, shouldPlay);
