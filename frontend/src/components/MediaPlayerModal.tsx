@@ -636,7 +636,8 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     if (isMuted) {
       const nextVolume = volume || 0.8;
       media.volume = nextVolume;
-      media.muted = false;
+      const externalAudioActive = alternateAudioIndexRef.current !== undefined;
+      media.muted = externalAudioActive;
       if (alternateAudio) {
         alternateAudio.volume = nextVolume;
         alternateAudio.muted = false;
@@ -830,38 +831,36 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
       return;
     }
 
-    // Legacy/direct presentation fallback. Keep this path only when the
-    // current stream is actually the direct Seedr video proxy.
+    // Direct Seedr presentation path: keep the video on its full-duration
+    // Range timeline and route ALL embedded audio tracks through the separate
+    // audio element. Seedr's native video presentation is not guaranteed to
+    // expose the embedded audio reliably to the browser.
     if (media && file?.streamUrl?.includes('/api/seedr/media/video/')) {
       const position = Number.isFinite(media.currentTime) ? media.currentTime : currentTime;
       const wasPlaying = !media.paused;
-      const primaryIndex = primaryAudioIndexRef.current;
-
       setSelectedAudioIndex(next);
-
-      if (primaryIndex !== undefined && next === primaryIndex) {
-        clearAlternateAudio(true);
-        media.currentTime = position;
-        if (wasPlaying) {
-          media.play()
-            .then(() => {
-              setIsPlaying(true);
-              setTrackNotice('');
-            })
-            .catch(() => setIsPlaying(false));
-        } else {
-          setIsPlaying(false);
-          setTrackNotice('');
-        }
-        return;
-      }
-
       loadAlternateAudio(next, position, wasPlaying);
       return;
     }
 
     setTrackNotice('Selected audio track is not available in this stream.');
   };
+  // Direct Seedr presentations are used for the full-duration video, but
+  // their embedded audio is not dependable in HTMLVideoElement. As soon as
+  // media metadata contains audio tracks, attach the selected track to the
+  // synchronized audio element. This also restores audio after reopening a
+  // file without requiring a manual track change.
+  useEffect(() => {
+    if (!isVideo || !file?.streamUrl?.includes('/api/seedr/media/video/')) return;
+    if (!mediaRef.current || audioTracks.length === 0 || selectedAudioIndex === undefined) return;
+    if (alternateAudioIndexRef.current !== undefined) return;
+
+    const media = mediaRef.current;
+    const position = Number.isFinite(media.currentTime) ? media.currentTime : currentTime;
+    const shouldPlay = !media.paused || isPlaying;
+    loadAlternateAudio(selectedAudioIndex, position, shouldPlay);
+  }, [audioTracks, selectedAudioIndex, file?.streamUrl, isVideo]);
+  
   const handleSubtitleTrackChange = (value: string) => {
     if (value === 'off') {
       setSelectedSubtitleIndex(undefined);
