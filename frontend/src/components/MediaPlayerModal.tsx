@@ -191,8 +191,14 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     const restorePlaying = resumePlayingRef.current || (!media.paused && duration > 0);
 
     const handleLoaded = () => {
-      if (isVideo && streamUrl.includes('/api/seedr/media/video/')) {
+      if (
+        isVideo &&
+        streamUrl.includes('/api/seedr/media/video/') &&
+        audioTracks.length > 1
+      ) {
         media.muted = true;
+      } else if (isVideo && streamUrl.includes('/api/seedr/media/video/')) {
+        media.muted = isMuted;
       }
       if (Number.isFinite(restoreTime) && restoreTime > 0 && Number.isFinite(media.duration)) {
         const safeTime = Math.min(restoreTime, Math.max(0, media.duration - 0.25));
@@ -356,7 +362,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
       media.load();
       hlsActiveRef.current = false;
     };
-  }, [file?.id, file?.streamUrl, file?.externalStreamUrl, isVideo]);
+  }, [file?.id, file?.streamUrl, file?.externalStreamUrl, isVideo, audioTracks.length, isMuted]);
 
 
 
@@ -898,27 +904,61 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
       const wasPlaying = !media.paused;
       setSelectedAudioIndex(next);
 
-      // All direct Seedr audio tracks use the dedicated audio element.
-      // The primary/default track is not special here; keeping the same path
-      // for one or multiple tracks makes playback reliable across browsers.
+      // Single-audio direct streams use native Seedr audio and do not
+      // need a second element. Multi-audio streams use the hybrid path.
+      if (audioTracks.length <= 1) {
+        media.muted = isMuted;
+        media.currentTime = position;
+        if (wasPlaying) {
+          media.play()
+            .then(() => {
+              setIsPlaying(true);
+              setTrackNotice('');
+            })
+            .catch(() => setIsPlaying(false));
+        } else {
+          setIsPlaying(false);
+          setTrackNotice('');
+        }
+        return;
+      }
+
       loadAlternateAudio(next, position, wasPlaying);
       return;
     }
 
     setTrackNotice('Selected audio track is not available in this stream.');
   };
-  // Direct Seedr presentations are used only for the video timeline. Route
-  // the selected embedded audio track through the dedicated audio element
-  // for every direct Seedr video, including files with only one track. This
-  // avoids browser/container combinations that play video but expose no audio.
+  // Hybrid audio strategy:
+  // - Single-audio direct streams keep Seedr's native video+audio together.
+  // - Multi-audio direct streams use a second synchronized audio element only
+  //   when the user selects an alternate track.
   useEffect(() => {
     if (!isVideo || !file?.streamUrl?.includes('/api/seedr/media/video/')) return;
     if (!mediaRef.current || audioTracks.length === 0 || selectedAudioIndex === undefined) return;
     if (hlsActiveRef.current) return;
 
     const media = mediaRef.current;
-    const position = Number.isFinite(media.currentTime) ? media.currentTime : currentTime;
-    const shouldPlay = !media.paused || isPlaying;
+    const isMultiAudio = audioTracks.length > 1;
+    const primary = primaryAudioIndexRef.current;
+
+    if (!isMultiAudio) {
+      if (alternateAudioIndexRef.current !== undefined) {
+        clearAlternateAudio(true);
+      }
+      media.muted = isMuted;
+      return;
+    }
+
+    // Multi-audio: keep the primary track on native video audio until an
+    // alternate track is selected.
+    if (primary !== undefined && selectedAudioIndex === primary) {
+      if (alternateAudioIndexRef.current !== undefined) {
+        clearAlternateAudio(true);
+      }
+      media.muted = isMuted;
+      return;
+    }
 
     if (
       alternateAudioIndexRef.current === selectedAudioIndex &&
@@ -928,9 +968,11 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
       return;
     }
 
+    const position = Number.isFinite(media.currentTime) ? media.currentTime : currentTime;
+    const shouldPlay = !media.paused || isPlaying;
     loadAlternateAudio(selectedAudioIndex, position, shouldPlay);
   }, [audioTracks, selectedAudioIndex, file?.streamUrl, isVideo]);
-  
+
   const handleSubtitleTrackChange = (value: string) => {
     if (value === 'off') {
       setSelectedSubtitleIndex(undefined);
