@@ -665,6 +665,52 @@ export const TorrentSearchPanel: React.FC<TorrentSearchPanelProps> = ({ onPrepar
                         );
                       }
 
+                      if (directPlayFile) {
+                        const isPlaying = playingTorrentKey === torrentKey;
+                        return (
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              disabled={isPlaying}
+                              onClick={async () => {
+                                if (isPlaying) return;
+                                setPlayingTorrentKey(torrentKey);
+                                try {
+                                  await onPlaySeedrFile?.(directPlayFile);
+                                } finally {
+                                  setPlayingTorrentKey(current => current === torrentKey ? null : current);
+                                }
+                              }}
+                              className="px-2 py-1.5 rounded-lg bg-emerald-400 text-slate-950 font-bold text-xs hover:bg-emerald-300 transition flex items-center gap-1 disabled:opacity-70 disabled:cursor-wait"
+                              title={isPlaying ? "Opening stream…" : "Play from Seedr"}
+                            >
+                              {isPlaying
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <Play className="w-3.5 h-3.5" />}
+                              <span className="hidden sm:inline">{isPlaying ? 'Loading…' : 'Play'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void onDownloadSeedrFile?.(directPlayFile)}
+                              className="px-2 py-1.5 rounded-lg bg-slate-800 text-slate-200 font-bold text-xs hover:bg-slate-700 transition flex items-center gap-1"
+                              title="Download from Seedr"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Download</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void onCopySeedrFileUrl?.(directPlayFile)}
+                              className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 transition"
+                              title="Copy Seedr link"
+                              aria-label="Copy Seedr link"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        );
+                      }
+
                       return (
                         <div className="flex items-center gap-1.5 shrink-0">
                           <button
