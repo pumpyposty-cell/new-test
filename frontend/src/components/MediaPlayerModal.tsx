@@ -132,7 +132,6 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
       : rawStreamUrl;
     const streamUrl = rawStreamUrl || String(file.externalStreamUrl || '').trim() || String(file.downloadUrl || '').trim();
 
-    // HLS audio tracks are switched through HLS.js. Do not append an audio query parameter.
     const fallbackStreamUrl = String(file.externalStreamUrl || '').trim() &&
       String(file.externalStreamUrl || '').trim() !== streamUrl
       ? String(file.externalStreamUrl || '').trim()
@@ -189,7 +188,6 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     const isHlsStream =
       /\.m3u8(?:$|\?)/i.test(streamUrl) ||
       streamUrl.includes('/api/seedr/hls/') ||
-      streamUrl.includes('/api/seedr/hls-master/') ||
       streamUrl.includes('/api/media/hls/');
 
     if (isHlsStream && isVideo && Hls.isSupported()) {
@@ -555,18 +553,28 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     audio.muted = isMuted;
     audio.playbackRate = playbackSpeed;
 
-    const url =
-      API_BASE +
-      '/api/seedr/media/audio/' + encodeURIComponent(fileId) +
-      '?track=' + encodeURIComponent(String(trackIndex)) +
-      '&start=' + encodeURIComponent(String(safePosition));
-
     setTrackNotice('Switching audio…');
     setMediaError('');
     setIsSeeking(true);
     alternateAudioIndexRef.current = trackIndex;
-    audio.src = url;
-    audio.load();
+
+    // Resolve Seedr's own presentation URL. No FFmpeg/remuxing happens on
+    // Render; the browser receives the alternate presentation directly.
+    void api.getSeedrAudioPresentationUrl(fileId, trackIndex)
+      .then(({ url }) => {
+        if (requestId !== alternateAudioRequestRef.current) return;
+        if (!url) throw new Error('Seedr returned an empty audio presentation URL');
+        audio.src = url;
+        audio.load();
+      })
+      .catch(() => {
+        if (requestId !== alternateAudioRequestRef.current) return;
+        alternateAudioIndexRef.current = undefined;
+        media.muted = isMuted;
+        setIsSeeking(false);
+        setIsPlaying(false);
+        setTrackNotice('Unable to resolve the selected audio track.');
+      });
 
     const handleAudioError = () => {
       if (requestId !== alternateAudioRequestRef.current) return;
@@ -640,15 +648,6 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     if (!Number.isInteger(next)) return;
 
     const media = mediaRef.current;
-    const hls = hlsRef.current;
-
-    if (hls?.audioTracks?.[next]) {
-      setSelectedAudioIndex(next);
-      setTrackNotice('Switching audio…');
-      hls.audioTrack = next;
-      return;
-    }
-
     if (media && file?.streamUrl.includes('/api/seedr/media/video/')) {
       const position = Number.isFinite(media.currentTime) ? media.currentTime : currentTime;
       const wasPlaying = !media.paused;
