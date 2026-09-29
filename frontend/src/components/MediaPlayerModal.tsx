@@ -473,14 +473,63 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     const trackElement = subtitleTrackRef.current;
     if (!trackElement || selectedSubtitleIndex === undefined || !subtitleBlobUrl) return;
 
-    const activate = () => {
+    let cancelled = false;
+    let retryTimer = 0;
+    let attempts = 0;
+
+    const syncNativeCues = () => {
+      if (cancelled) return;
+
       try {
         trackElement.track.mode = 'showing';
       } catch {}
+
+      const cues = trackElement.track.cues;
+      if (cues && cues.length > 0) {
+        const parsed: SubtitleCue[] = [];
+        for (let i = 0; i < cues.length; i += 1) {
+          const cue = cues[i] as TextTrackCue & { startTime: number; endTime: number; text?: string };
+          const text = String(cue.text || '').replace(/<[^>]+>/g, '').trim();
+          if (
+            text &&
+            Number.isFinite(cue.startTime) &&
+            Number.isFinite(cue.endTime) &&
+            cue.endTime > cue.startTime
+          ) {
+            parsed.push({
+              start: cue.startTime,
+              end: cue.endTime,
+              text,
+            });
+          }
+        }
+        if (parsed.length > 0) {
+          setSubtitleCues(parsed);
+          setTrackNotice('');
+          return;
+        }
+      }
+
+      // Some Chromium builds populate TextTrack.cues one task after the
+      // track load event. Give the native parser a few chances instead of
+      // assuming an empty cue list means the subtitle file is empty.
+      attempts += 1;
+      if (attempts < 5) {
+        retryTimer = window.setTimeout(syncNativeCues, 150);
+      } else {
+        setSubtitleCues([]);
+        setTrackNotice('Subtitle file loaded, but no readable cues were found.');
+      }
     };
-    trackElement.addEventListener('load', activate, { once: true });
-    activate();
-    return () => trackElement.removeEventListener('load', activate);
+
+    trackElement.addEventListener('load', syncNativeCues);
+    syncNativeCues();
+
+    return () => {
+      cancelled = true;
+      trackElement.removeEventListener('load', syncNativeCues);
+      if (retryTimer) window.clearTimeout(retryTimer);
+    };
   }, [selectedSubtitleIndex, subtitleBlobUrl]);
 
   useEffect(() => {
