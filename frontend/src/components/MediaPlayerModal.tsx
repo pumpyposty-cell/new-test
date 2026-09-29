@@ -1240,6 +1240,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
           )}
 
           {isVideo ? (
+            <>
             <video
               ref={videoRef}
               crossOrigin={file.streamUrl?.startsWith(API_BASE) ? 'anonymous' : undefined}
@@ -1268,6 +1269,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
                 {activeSubtitleCue.text}
               </div>
             )}
+            </>
           ) : (
             <div className="flex flex-col items-center justify-center p-8 text-center gap-4">
               <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 animate-pulse-subtle">
