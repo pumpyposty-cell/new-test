@@ -65,6 +65,7 @@ import { StorageCleanupModal } from './components/StorageCleanupModal.tsx';
 import { FolderShareModal } from './components/FolderShareModal.tsx';
 import { NotificationCenter } from './components/NotificationCenter.tsx';
 import { ActivityLogView } from './components/ActivityLogView.tsx';
+import { SeedrDownloadBanner } from './components/SeedrDownloadBanner.tsx';
 import { CreateFolderModal } from './components/CreateFolderModal.tsx';
 import { MoveFileModal } from './components/MoveFileModal.tsx';
 import { RenameModal } from './components/RenameModal.tsx';
@@ -2726,6 +2727,13 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-2.5 sm:p-6 pb-20 md:pb-12">
+        <SeedrDownloadBanner
+          active={seedrDownloadActive}
+          notice={seedrNotice}
+          cancelling={isCancellingSeedr}
+          onCancel={() => void handleCancelSeedrDownload()}
+        />
+
         {seedrAddBlockedNotice && (
           <div className="mb-2.5 sm:mb-4 p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-start gap-2.5 shadow-lg">
             <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
