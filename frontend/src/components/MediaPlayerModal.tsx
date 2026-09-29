@@ -202,6 +202,11 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
           enableWorker: true,
           lowLatencyMode: false,
           backBufferLength: 90,
+          // Seedr sessions are stored in an HttpOnly cookie on the Render API.
+          // Hls.js does not send cross-origin cookies unless this is enabled.
+          xhrSetup: (xhr) => {
+            xhr.withCredentials = true;
+          },
         });
         hlsRef.current = hls;
         setMediaError('');
@@ -236,9 +241,6 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
         });
         hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, syncHlsTracks);
         hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, syncHlsTracks);
-        hls.on(Hls.Events.AUDIO_TRACK_SWITCHING, () => {
-          setTrackNotice('Switching audio…');
-        });
         hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, () => {
           setTrackNotice('');
         });
@@ -248,8 +250,10 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
           console.warn('[MEDIA][HLS] fatal error', {
             details: data?.details,
             type: data?.type,
-            response: data?.response?.code,
-            url: sourceUrl,
+            fatal: data?.fatal,
+            response: data?.response,
+            networkDetails: data?.networkDetails,
+            url: data?.url || sourceUrl,
           });
 
           if (!triedFallback && fallbackStreamUrl && sourceUrl !== fallbackStreamUrl) {
