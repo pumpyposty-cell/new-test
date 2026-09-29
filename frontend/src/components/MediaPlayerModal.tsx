@@ -1334,144 +1334,74 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
             </span>
           </div>
 
-          {/* Main Controls row */}
-          <div className="flex items-center justify-between gap-3 overflow-hidden">
-            {/* Left: Playback buttons */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => skip(-10)}
-                className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition"
-                title="Rewind 10 seconds"
-              >
-                <RotateCcw className="w-4 h-4" />
-              </button>
-
-              <button
-                onClick={togglePlay}
-                className="p-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold transition shadow-lg shadow-cyan-500/20"
-                title={isPlaying ? 'Pause' : 'Play'}
-              >
-                {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current" />}
-              </button>
-
-              <button
-                onClick={() => skip(10)}
-                className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition"
-                title="Forward 10 seconds"
-              >
-                <RotateCw className="w-4 h-4" />
-              </button>
-
-              {/* Volume */}
-              <div className="flex items-center gap-2 ml-2 pl-2 border-l border-slate-800">
-                <button
-                  onClick={toggleMute}
-                  className="p-2 rounded-lg text-slate-400 hover:text-slate-200"
-                >
-                  {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+          {/* Main Controls */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2 min-w-0">
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button onClick={() => skip(-10)} className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition" title="Rewind 10 seconds"><RotateCcw className="w-4 h-4" /></button>
+                <button onClick={togglePlay} className="p-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold transition shadow-lg shadow-cyan-500/20" title={isPlaying ? 'Pause' : 'Play'}>
+                  {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current" />}
                 </button>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={isMuted ? 0 : volume}
-                  onChange={handleVolume}
-                  className="w-16 sm:w-24 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                />
+                <button onClick={() => skip(10)} className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition" title="Forward 10 seconds"><RotateCw className="w-4 h-4" /></button>
+                <div className="flex items-center gap-1.5 ml-1.5 pl-1.5 border-l border-slate-800">
+                  <button onClick={toggleMute} className="p-2 rounded-lg text-slate-400 hover:text-slate-200" title={isMuted ? 'Unmute' : 'Mute'}>
+                    {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                  </button>
+                  <input type="range" min={0} max={1} step={0.05} value={isMuted ? 0 : volume} onChange={handleVolume}
+                    className="w-14 sm:w-20 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400" title="Volume" />
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {tracksLoading && <div className="flex items-center gap-1.5 bg-slate-800/80 rounded-lg px-2 py-1.5 text-[11px] text-slate-400"><Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" /><span className="hidden sm:inline">Tracks</span></div>}
+                {isVideo && <button onClick={togglePip} className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition" title="Picture in Picture"><ExternalLink className="w-4 h-4" /></button>}
+                <button onClick={toggleFullscreen} className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition" title="Fullscreen">
+                  {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+                </button>
               </div>
             </div>
 
-            {/* Right: Speed, PiP, Fullscreen */}
-            <div className="flex items-center gap-2 flex-nowrap justify-end min-w-0 overflow-x-auto scrollbar-hide">
-              {tracksLoading && (
-                <div className="flex items-center gap-1.5 bg-slate-800/80 rounded-lg px-2 py-1.5 text-[11px] text-slate-400">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" />
-                  Tracks
-                </div>
-              )}
-
+            <div className="flex items-center gap-1.5 flex-wrap min-w-0">
               {audioTracks.length > 1 && (
-                <label className="flex items-center gap-2 rounded-xl border border-slate-700/80 bg-slate-800/90 px-2.5 py-1.5 shadow-sm">
+                <label className="flex items-center gap-1.5 rounded-lg border border-slate-700/80 bg-slate-800/90 px-2 py-1.5 min-w-0 flex-1 sm:flex-none">
                   <Languages className="h-4 w-4 shrink-0 text-cyan-400" />
-                  <span className="hidden text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:inline">Audio</span>
-                  <select
-                    value={selectedAudioIndex !== undefined ? selectedAudioIndex : (audioTracks[0]?.index ?? '')}
+                  <span className="hidden sm:inline text-[10px] font-semibold uppercase tracking-wide text-slate-400">Audio</span>
+                  <select value={selectedAudioIndex !== undefined ? selectedAudioIndex : (audioTracks[0]?.index ?? '')}
                     onChange={(e) => handleAudioTrackChange(e.target.value)}
-                    className="min-w-[115px] max-w-[185px] bg-transparent text-xs font-semibold text-slate-100 outline-none"
-                    title="Audio track"
-                  >
+                    className="min-w-0 w-full sm:w-[180px] bg-slate-800 text-xs font-semibold text-slate-100 outline-none"
+                    style={{ colorScheme: 'dark' }} title="Audio track">
                     {audioTracks.map((track, index) => (
-                      <option key={track.index} value={track.index}>
-                        {formatTrackLabel(track, index, 'Audio')}{track.default ? ' · Default' : ''}
-                      </option>
+                      <option key={track.index} value={track.index} className="bg-slate-900 text-slate-100">{formatTrackLabel(track, index, 'Audio')}{track.default ? ' · Default' : ''}</option>
                     ))}
                   </select>
                 </label>
               )}
 
               {isVideo && (
-                <label className="flex items-center gap-1 rounded-xl border border-slate-700/80 bg-slate-800/90 px-1.5 py-1.5 shadow-sm shrink-0">
+                <label className="flex items-center gap-1.5 rounded-lg border border-slate-700/80 bg-slate-800/90 px-2 py-1.5 min-w-0 flex-1 sm:flex-none">
                   <Captions className="h-4 w-4 shrink-0 text-cyan-400" />
-                  <span className="hidden text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:inline">Subs</span>
-                  <select
-                    disabled={tracksLoading || (hlsSubtitleTracks.length === 0 && subtitleTracks.length === 0)}
+                  <span className="hidden sm:inline text-[10px] font-semibold uppercase tracking-wide text-slate-400">Subs</span>
+                  <select disabled={tracksLoading || (hlsSubtitleTracks.length === 0 && subtitleTracks.length === 0)}
                     value={selectedHlsSubtitleIndex !== undefined ? 'hls:' + selectedHlsSubtitleIndex : selectedSubtitleIndex !== undefined ? 'external:' + selectedSubtitleIndex : 'off'}
                     onChange={(e) => handleSubtitleTrackChange(e.target.value)}
-                    className="w-[78px] sm:w-[92px] md:w-[105px] bg-transparent text-[11px] font-semibold text-slate-100 outline-none disabled:cursor-not-allowed disabled:text-slate-500 truncate"
-                    title={tracksLoading ? 'Loading subtitles' : 'Subtitles'}
-                  >
-                    <option value="off">{tracksLoading ? 'Loading…' : 'Subtitles Off'}</option>
-                    {hlsSubtitleTracks.map((track, index) => (
-                      <option key={'hls-sub-' + track.index} value={'hls:' + track.index}>
-                        {formatTrackLabel(track, index, 'Subtitle')}
-                      </option>
-                    ))}
-                    {subtitleTracks.map((track, index) => (
-                      <option key={'external-sub-' + track.index} value={'external:' + track.index}>
-                        {formatTrackLabel(track, index, 'Subtitle')}
-                      </option>
-                    ))}
+                    className="min-w-0 w-full sm:w-[140px] bg-slate-800 text-xs font-semibold text-slate-100 outline-none disabled:cursor-not-allowed disabled:text-slate-500"
+                    style={{ colorScheme: 'dark' }} title={tracksLoading ? 'Loading subtitles' : 'Subtitles'}>
+                    <option value="off" className="bg-slate-900 text-slate-100">{tracksLoading ? 'Loading…' : 'Subtitles Off'}</option>
+                    {hlsSubtitleTracks.map((track, index) => <option key={'hls-sub-' + track.index} value={'hls:' + track.index} className="bg-slate-900 text-slate-100">{formatTrackLabel(track, index, 'Subtitle')}</option>)}
+                    {subtitleTracks.map((track, index) => <option key={'external-sub-' + track.index} value={'external:' + track.index} className="bg-slate-900 text-slate-100">{formatTrackLabel(track, index, 'Subtitle')}</option>)}
                   </select>
                 </label>
               )}
 
-              {/* Playback Speed selector */}
-              <div className="flex items-center bg-slate-800/80 rounded-lg p-0.5 text-xs font-medium text-slate-300">
+              <div className="flex items-center bg-slate-800/80 rounded-lg p-0.5 text-xs font-medium text-slate-300 shrink-0">
                 {[0.75, 1, 1.25, 1.5, 2].map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => handleSpeedChange(s)}
+                  <button key={s} onClick={() => handleSpeedChange(s)}
                     className={`px-2 py-1 rounded-md transition ${
-                      playbackSpeed === s
-                        ? 'bg-cyan-500 text-slate-950 font-bold'
-                        : 'hover:text-white'
-                    }`}
-                  >
+                      playbackSpeed === s ? 'bg-cyan-500 text-slate-950 font-bold' : 'hover:text-white'
+                    }`}>
                     {s}x
                   </button>
                 ))}
               </div>
-
-              {/* PiP (video only) */}
-              {isVideo && (
-                <button
-                  onClick={togglePip}
-                  className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition"
-                  title="Picture in Picture"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                </button>
-              )}
-
-              {/* Fullscreen */}
-              <button
-                onClick={toggleFullscreen}
-                className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition"
-                title="Fullscreen"
-              >
-                {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
-              </button>
             </div>
           </div>
         </div>
