@@ -5082,7 +5082,7 @@ async def _run_dynamic_hls_segment(file_id: str, kind: str, segment_index: int, 
             raise HTTPException(404, "Audio track not found")
 
         audio_codec = str(info["audio"][track].get("codec") or "").lower()
-        command = [
+        base_command = [
             "ffmpeg", "-v", "error", "-nostdin",
             "-ss", f"{start:.3f}",
             "-i", source_url,
@@ -5091,19 +5091,19 @@ async def _run_dynamic_hls_segment(file_id: str, kind: str, segment_index: int, 
             "-vn", "-sn", "-dn",
         ]
 
-        # AAC can be copied directly into MPEG-TS. This avoids decoding and
-        # re-encoding every audio segment, which is important on Render Free.
-        if audio_codec in {"aac", "mp4a"}:
-            command += [
+        # Prefer AAC stream-copy on Render Free. If the particular Seedr
+        # source cannot be seek-copied cleanly, retry this segment with the
+        # lightweight AAC encoder instead of returning a 502 to hls.js.
+        copy_audio = audio_codec in {"aac", "mp4a"}
+        if copy_audio:
+            command = base_command + [
                 "-c:a", "copy",
                 "-avoid_negative_ts", "make_zero",
                 "-f", "mpegts",
                 "pipe:1",
             ]
         else:
-            # Keep a compatibility fallback for audio codecs that cannot be
-            # carried by the browser-oriented AAC HLS rendition.
-            command += [
+            command = base_command + [
                 "-c:a", "aac", "-b:a", "192k",
                 "-ac", "2", "-ar", "48000",
                 "-af", "aresample=async=1:first_pts=0",
@@ -5146,6 +5146,25 @@ async def _run_dynamic_hls_segment(file_id: str, kind: str, segment_index: int, 
                 stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await process.communicate()
+
+            # Seedr can expose AAC tracks whose container/timestamps do not
+            # support a clean copy at every seek point. Retry only failed AAC
+            # copies; successful copies remain zero-transcode.
+            if process.returncode != 0 and copy_audio:
+                fallback_command = base_command + [
+                    "-c:a", "aac", "-b:a", "192k",
+                    "-ac", "2", "-ar", "48000",
+                    "-af", "aresample=async=1:first_pts=0",
+                    "-avoid_negative_ts", "make_zero",
+                    "-f", "mpegts",
+                    "pipe:1",
+                ]
+                process = await asyncio.create_subprocess_exec(
+                    *fallback_command,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await process.communicate()
     except FileNotFoundError as exc:
         raise HTTPException(503, "FFmpeg is not installed on the media server") from exc
 
