@@ -5445,10 +5445,16 @@ async def seedr_video_media(
     if audio is not None:
         return await _stream_selected_audio(file_id, audio, start=start)
 
-    # Supplying an explicit audio rendition makes Seedr include the
-    # audio track in presentations that otherwise return a silent default
-    # video presentation.
-    upstream_url = await seedr_v2_video_url(file_id, audio_index=audio)
+    # Always request the primary audio rendition from Seedr for the
+    # normal browser video path. This is what keeps single-audio files audible
+    # while preserving the native Range-based video timeline. An explicit
+    # non-zero audio query is reserved for the legacy server-side path.
+    requested_audio_index = audio if audio is not None else 0
+    upstream_url = await seedr_v2_video_url(file_id, audio_index=requested_audio_index)
+    if not upstream_url and audio is None:
+        # If Seedr rejects the explicit primary-rendition presentation, fall
+        # back to its normal presentation URL rather than failing playback.
+        upstream_url = await seedr_v2_video_url(file_id)
     if not upstream_url:
         raise HTTPException(404, "Seedr returned no video presentation URL")
 
