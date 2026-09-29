@@ -4856,6 +4856,7 @@ def _track_title(stream: dict[str, Any], fallback: str) -> str:
 _DYNAMIC_HLS_SEGMENT_SECONDS = 6.0
 _SEEDR_DYNAMIC_HLS_CACHE_SECONDS = 600
 _seedr_dynamic_hls_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_dynamic_hls_segment_semaphore = asyncio.Semaphore(2)
 
 
 async def _get_seedr_dynamic_hls_info(file_id: str) -> dict[str, Any]:
@@ -5079,6 +5080,8 @@ async def _run_dynamic_hls_segment(file_id: str, kind: str, segment_index: int, 
     if kind == "audio":
         if track is None or track < 0 or track >= len(info["audio"]):
             raise HTTPException(404, "Audio track not found")
+
+        audio_codec = str(info["audio"][track].get("codec") or "").lower()
         command = [
             "ffmpeg", "-v", "error", "-nostdin",
             "-ss", f"{start:.3f}",
@@ -5086,13 +5089,28 @@ async def _run_dynamic_hls_segment(file_id: str, kind: str, segment_index: int, 
             "-t", f"{length:.3f}",
             "-map", f"0:a:{track}",
             "-vn", "-sn", "-dn",
-            "-c:a", "aac", "-b:a", "192k",
-            "-ac", "2", "-ar", "48000",
-            "-af", "aresample=async=1:first_pts=0",
-            "-avoid_negative_ts", "make_zero",
-            "-f", "mpegts",
-            "pipe:1",
         ]
+
+        # AAC can be copied directly into MPEG-TS. This avoids decoding and
+        # re-encoding every audio segment, which is important on Render Free.
+        if audio_codec in {"aac", "mp4a"}:
+            command += [
+                "-c:a", "copy",
+                "-avoid_negative_ts", "make_zero",
+                "-f", "mpegts",
+                "pipe:1",
+            ]
+        else:
+            # Keep a compatibility fallback for audio codecs that cannot be
+            # carried by the browser-oriented AAC HLS rendition.
+            command += [
+                "-c:a", "aac", "-b:a", "192k",
+                "-ac", "2", "-ar", "48000",
+                "-af", "aresample=async=1:first_pts=0",
+                "-avoid_negative_ts", "make_zero",
+                "-f", "mpegts",
+                "pipe:1",
+            ]
     else:
         codec = str(info["video"].get("codec") or "").lower()
         command = [
@@ -5118,15 +5136,19 @@ async def _run_dynamic_hls_segment(file_id: str, kind: str, segment_index: int, 
         command += ["-avoid_negative_ts", "make_zero", "-f", "mpegts", "pipe:1"]
 
     try:
-        process = await asyncio.create_subprocess_exec(
-            *command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        # Keep at most two segment jobs active (normally one video + one
+        # audio). This prevents hls.js prefetching from creating a CPU/RAM
+        # spike on the 0.1 CPU / 512 MB Render Free instance.
+        async with _dynamic_hls_segment_semaphore:
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await process.communicate()
     except FileNotFoundError as exc:
         raise HTTPException(503, "FFmpeg is not installed on the media server") from exc
 
-    stdout, stderr = await process.communicate()
     if process.returncode != 0:
         detail = stderr.decode("utf-8", errors="replace")[-1200:]
         raise HTTPException(502, detail or "HLS segment generation failed")
