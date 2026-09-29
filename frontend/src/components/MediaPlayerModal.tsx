@@ -41,26 +41,34 @@ function parseWebVttTimestamp(value: string): number {
 }
 
 function parseWebVttCues(source: string): SubtitleCue[] {
-  return String(source || '')
+  const normalized = String(source || '')
     .replace(/^\uFEFF/, '')
-    .split(/\n{2,}/)
+    .replace(/\r\n?/g, '\n');
+
+  return normalized
+    .split(/\n\s*\n+/)
     .map(block => block.trim())
-    .filter(Boolean)
+    .filter(block => block && !/^WEBVTT(?:\s|$)/i.test(block) && !/^NOTE(?:\s|$)/i.test(block) && !/^STYLE(?:\s|$)/i.test(block) && !/^REGION(?:\s|$)/i.test(block))
     .flatMap(block => {
-      const lines = block.split(/\n/).map(line => line.trimEnd());
+      const lines = block.split('\n');
       const timingIndex = lines.findIndex(line => line.includes('-->'));
       if (timingIndex < 0) return [];
-      const timing = lines[timingIndex].match(/^(.+?)\s*-->\s*(.+?)(?:\s+.*)?$/);
+
+      const timing = lines[timingIndex].match(/^\s*(\d{1,2}:\d{2}:\d{2}(?:[.,]\d{1,3})?|\d{1,2}:\d{2}(?:[.,]\d{1,3})?)\s*-->\s*(\d{1,2}:\d{2}:\d{2}(?:[.,]\d{1,3})?|\d{1,2}:\d{2}(?:[.,]\d{1,3})?)(?:\s+.*)?$/);
       if (!timing) return [];
+
       const start = parseWebVttTimestamp(timing[1]);
       const end = parseWebVttTimestamp(timing[2]);
-      const text = lines.slice(timingIndex + 1).join('\n').trim();
+      const text = lines
+        .slice(timingIndex + 1)
+        .join('\n')
+        .replace(/<v\s+[^>]*>/gi, '')
+        .replace(/<\/(?:v|c|i|b|u)>/gi, '')
+        .replace(/<[^>]+>/g, '')
+        .trim();
+
       if (!text || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) return [];
-      return [{
-        start,
-        end,
-        text: text.replace(/<[^>]+>/g, '').replace(/\s+\n/g, '\n').trim(),
-      }];
+      return [{ start, end, text }];
     });
 }
 
@@ -183,6 +191,9 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     const restorePlaying = resumePlayingRef.current || (!media.paused && duration > 0);
 
     const handleLoaded = () => {
+      if (isVideo && streamUrl.includes('/api/seedr/media/video/')) {
+        media.muted = true;
+      }
       if (Number.isFinite(restoreTime) && restoreTime > 0 && Number.isFinite(media.duration)) {
         const safeTime = Math.min(restoreTime, Math.max(0, media.duration - 0.25));
         try {
@@ -838,57 +849,36 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
       const wasPlaying = !media.paused;
       setSelectedAudioIndex(next);
 
-      // Keep Seedr's primary/default audio on the native video element.
-      // Use the separate audio element only when the user selects an
-      // alternate embedded track.
-      if (primaryAudioIndexRef.current !== undefined && next === primaryAudioIndexRef.current) {
-        clearAlternateAudio(true);
-        media.currentTime = position;
-        media.muted = isMuted;
-        if (wasPlaying) {
-          media.play()
-            .then(() => {
-              setIsPlaying(true);
-              setTrackNotice('');
-            })
-            .catch(() => setIsPlaying(false));
-        } else {
-          setIsPlaying(false);
-          setTrackNotice('');
-        }
-        return;
-      }
-
+      // All direct Seedr audio tracks use the dedicated audio element.
+      // The primary/default track is not special here; keeping the same path
+      // for one or multiple tracks makes playback reliable across browsers.
       loadAlternateAudio(next, position, wasPlaying);
       return;
     }
 
     setTrackNotice('Selected audio track is not available in this stream.');
   };
-  // Direct Seedr presentations keep their primary audio on the native
-  // video element. We only need the second audio element for an alternate
-  // track, which avoids making the whole player silent when the fallback
-  // audio stream is still being prepared.
+  // Direct Seedr presentations are used only for the video timeline. Route
+  // the selected embedded audio track through the dedicated audio element
+  // for every direct Seedr video, including files with only one track. This
+  // avoids browser/container combinations that play video but expose no audio.
   useEffect(() => {
     if (!isVideo || !file?.streamUrl?.includes('/api/seedr/media/video/')) return;
     if (!mediaRef.current || audioTracks.length === 0 || selectedAudioIndex === undefined) return;
+    if (hlsActiveRef.current) return;
 
     const media = mediaRef.current;
-    const primary = primaryAudioIndexRef.current;
+    const position = Number.isFinite(media.currentTime) ? media.currentTime : currentTime;
+    const shouldPlay = !media.paused || isPlaying;
 
-    if (primary !== undefined && selectedAudioIndex === primary) {
-      if (alternateAudioIndexRef.current !== undefined) {
-        clearAlternateAudio(true);
-      } else {
-        media.muted = isMuted;
-      }
+    if (
+      alternateAudioIndexRef.current === selectedAudioIndex &&
+      alternateAudioRef.current?.src
+    ) {
+      media.muted = true;
       return;
     }
 
-    if (alternateAudioIndexRef.current === selectedAudioIndex) return;
-
-    const position = Number.isFinite(media.currentTime) ? media.currentTime : currentTime;
-    const shouldPlay = !media.paused || isPlaying;
     loadAlternateAudio(selectedAudioIndex, position, shouldPlay);
   }, [audioTracks, selectedAudioIndex, file?.streamUrl, isVideo]);
   
@@ -1239,7 +1229,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
           }`}
           onClick={() => {
             if (isFullscreen) {
-              setFullscreenControlsVisible(true);
+              setFullscreenControlsVisible(current => !current);
             }
           }}
         >
@@ -1282,7 +1272,9 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
               }`}
               onClick={(event) => {
                 event.stopPropagation();
-                if (isFullscreen) setFullscreenControlsVisible(true);
+                if (isFullscreen) {
+                  setFullscreenControlsVisible(current => !current);
+                }
               }}
               onTimeUpdate={onTimeUpdate}
               onSeeking={onSeeking}
@@ -1295,6 +1287,16 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
               onLoadedMetadata={onLoadedMetadata}
               onEnded={() => setIsPlaying(false)}
               onError={handleMediaError}>
+              {selectedSubtitleIndex !== undefined && subtitleBlobUrl && (
+                <track
+                  ref={subtitleTrackRef}
+                  kind="subtitles"
+                  src={subtitleBlobUrl}
+                  srcLang={subtitleTracks.find(track => track.index === selectedSubtitleIndex)?.language || 'en'}
+                  label={subtitleTracks.find(track => track.index === selectedSubtitleIndex)?.title || 'Subtitles'}
+                  default
+                />
+              )}
             </video>
             {activeSubtitleCue && selectedSubtitleIndex !== undefined && (
               <div className="absolute left-1/2 bottom-4 z-20 max-w-[90%] -translate-x-1/2 rounded-md bg-black/75 px-3 py-1.5 text-center text-sm font-medium leading-6 text-white shadow-lg backdrop-blur-sm whitespace-pre-line pointer-events-none md:text-base">
