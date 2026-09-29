@@ -4984,7 +4984,7 @@ async def seedr_dynamic_hls_master(file_id: str):
 
     info = await _get_seedr_dynamic_hls_info(file_id)
     audio_group = "seedr-audio"
-    lines = ["#EXTM3U", "#EXT-X-VERSION:3", "#EXT-X-INDEPENDENT-SEGMENTS"]
+    lines = ["#EXTM3U", "#EXT-X-VERSION:3"]
 
     for index, track in enumerate(info["audio"]):
         language, label = _dynamic_hls_track_label(track, index)
@@ -4999,13 +4999,13 @@ async def seedr_dynamic_hls_master(file_id: str):
 
     video = info["video"]
     codecs = str(video.get("codec") or "").lower()
-    codec_string = "avc1.42E01E"
+    codec_string = "avc1.42E01E,mp4a.40.2"
     if codecs in {"h264", "avc1"}:
-        codec_string = "avc1.42E01E"
+        codec_string = "avc1.42E01E,mp4a.40.2"
     elif codecs in {"hevc", "h265"}:
-        codec_string = "hvc1"
+        codec_string = "hvc1,mp4a.40.2"
     elif codecs:
-        codec_string = codecs
+        codec_string = codecs + ",mp4a.40.2"
 
     bandwidth = max(500_000, int(video.get("bitRate") or 4_000_000))
     resolution = ""
