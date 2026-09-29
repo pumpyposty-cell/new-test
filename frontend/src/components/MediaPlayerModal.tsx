@@ -622,7 +622,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
 
     // Keep the original video resource and timeline intact. Only its audio
     // output is muted while the selected track is prepared in a second audio
-    // element. This avoids resetting the video's duration/seekable range.
+    // element. This preserves the full-duration video timeline.
     media.pause();
     media.muted = true;
     audio.pause();
@@ -635,17 +635,24 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     setIsSeeking(true);
     alternateAudioIndexRef.current = trackIndex;
 
-    // Resolve Seedr's own presentation URL. No FFmpeg/remuxing happens on
-    // Render; the browser receives the alternate presentation directly.
-    void api.getSeedrAudioPresentationUrl(fileId, trackIndex)
-      .then(({ url }) => {
+    // Seedr may not expose a separate V2 presentation for every alternate
+    // track. The backend therefore chooses either the lightweight Seedr
+    // byte-proxy or an audio-only FFmpeg fallback. The latter starts at the
+    // requested video position, so its own timeline begins at 0.
+    void api.getSeedrAudioPresentationUrl(fileId, trackIndex, safePosition)
+      .then(({ url, protocol }) => {
         if (requestId !== alternateAudioRequestRef.current) return;
-        if (!url) throw new Error('Seedr returned an empty audio presentation URL');
+        if (!url) throw new Error('Seedr returned an empty audio playback URL');
+        audio.dataset.playbackProtocol = String(protocol || '');
+        audio.dataset.playbackStart = String(
+          protocol === 'ffmpeg-audio-fallback' ? safePosition : 0
+        );
         audio.src = url;
         audio.load();
       })
-      .catch(() => {
+      .catch((error) => {
         if (requestId !== alternateAudioRequestRef.current) return;
+        console.warn('[MEDIA][AUDIO] alternate track load failed', error);
         alternateAudioIndexRef.current = undefined;
         media.muted = isMuted;
         setIsSeeking(false);
@@ -667,9 +674,9 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
       if (requestId !== alternateAudioRequestRef.current) return;
       audio.removeEventListener('canplay', startTogether);
       audio.removeEventListener('error', handleAudioError);
-      // The alternate presentation has its own timeline. Start it at the
-      // exact video position instead of always restarting from 0.
-      const targetTime = Number.isFinite(safePosition) ? safePosition : 0;
+
+      const playbackProtocol = String(audio.dataset.playbackProtocol || '');
+      const targetTime = playbackProtocol === 'ffmpeg-audio-fallback' ? 0 : safePosition;
       try {
         if (Number.isFinite(audio.duration) && audio.duration > 0) {
           audio.currentTime = Math.min(targetTime, Math.max(0, audio.duration - 0.1));
@@ -685,9 +692,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
         return;
       }
 
-      // Start both elements from the same user-visible position only after
-      // the alternate audio is playable. This prevents the audio track from
-      // getting ahead of the first video frame during a track switch.
+      // Start both elements only after the selected audio is playable.
       const startVideo = media.play();
       const startAudio = audio.play();
       Promise.allSettled([startVideo, startAudio]).then((results) => {
