@@ -91,8 +91,6 @@ export default function App() {
   const [seedrPatSubmitting, setSeedrPatSubmitting] = useState(false);
   const [seedrConnectError, setSeedrConnectError] = useState('');
 
-;
-
   useEffect(() => {
     let stopped = false;
     void api.getSeedrSession()
@@ -111,7 +109,7 @@ export default function App() {
     return () => {
       stopped = true;
     };
-  });
+  }, []);
 
   const connectSeedrWithPat = useCallback(async () => {
     const pat = seedrPat.trim();
