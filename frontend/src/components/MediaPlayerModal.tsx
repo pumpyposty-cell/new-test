@@ -189,6 +189,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     const isHlsStream =
       /\.m3u8(?:$|\?)/i.test(streamUrl) ||
       streamUrl.includes('/api/seedr/hls/') ||
+      streamUrl.includes('/api/seedr/hls-master/') ||
       streamUrl.includes('/api/media/hls/');
 
     if (isHlsStream && isVideo && Hls.isSupported()) {
@@ -368,7 +369,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     if (!sourceUrl) return () => {};
 
     setTrackNotice('Loading subtitles…');
-    void fetch(sourceUrl, { credentials: 'include' })
+    void fetch(sourceUrl)
       .then(async response => {
         if (!response.ok) throw new Error('Subtitle request failed: ' + response.status);
         const text = await response.text();
@@ -720,7 +721,37 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     if (!Number.isInteger(next)) return;
 
     const media = mediaRef.current;
-    if (media && file?.streamUrl.includes('/api/seedr/media/video/')) {
+    const hls = hlsRef.current;
+
+    // HLS multi-audio is the primary path for files with multiple embedded
+    // audio tracks. Let hls.js switch the rendition inside the same media
+    // pipeline so video/audio remain synchronized.
+    if (hls && hls.audioTracks?.[next]) {
+      const wasPlaying = Boolean(media && !media.paused);
+      setSelectedAudioIndex(next);
+      hls.audioTrack = next;
+      setTrackNotice('Switching audio…');
+
+      const handleSwitched = (_event: any, data: any) => {
+        if (Number(data?.id) !== next) return;
+        hls.off(Hls.Events.AUDIO_TRACK_SWITCHED, handleSwitched);
+        setTrackNotice('');
+        setIsPlaying(Boolean(media && !media.paused));
+      };
+
+      hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, handleSwitched);
+
+      // If hls.js has already completed the switch synchronously, don't leave
+      // the loading notice visible.
+      if (!wasPlaying && media?.paused) {
+        setTrackNotice('');
+      }
+      return;
+    }
+
+    // Legacy/direct presentation fallback. Keep this path only when the
+    // current stream is actually the direct Seedr video proxy.
+    if (media && file?.streamUrl?.includes('/api/seedr/media/video/')) {
       const position = Number.isFinite(media.currentTime) ? media.currentTime : currentTime;
       const wasPlaying = !media.paused;
       const primaryIndex = primaryAudioIndexRef.current;
