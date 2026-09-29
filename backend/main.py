@@ -5146,24 +5146,26 @@ async def seedr_audio_media_route(
         raise HTTPException(404, "Audio track not found")
 
     source_url = await _seedr_media_source_url(file_id)
-    source = audio_streams[track]
-    codec = str(source.get("codec_name") or "").lower()
 
+    # Always produce a clean browser-compatible AAC stream. Copying an
+    # arbitrary AAC track directly into a fragmented MP4 can produce files
+    # that Chrome accepts at the HTTP level but rejects as an HTMLMediaElement
+    # source (especially with multichannel tracks or non-standard priming
+    # metadata). Transcoding also normalizes timestamps after a mid-stream seek.
     command = [
         "ffmpeg", "-v", "error", "-nostdin",
         *(["-ss", str(max(0.0, start))] if start > 0 else []),
         "-i", source_url,
         "-map", f"0:a:{track}",
-    ]
-
-    # AAC can be copied directly into MP4, which makes the common case much
-    # faster. Other codecs are transcoded to AAC for broad browser support.
-    if codec == "aac":
-        command += ["-c:a", "copy"]
-    else:
-        command += ["-c:a", "aac", "-b:a", "192k"]
-
-    command += [
+        "-vn",
+        "-sn",
+        "-dn",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        "-ac", "2",
+        "-ar", "48000",
+        "-af", "aresample=async=1:first_pts=0",
+        "-avoid_negative_ts", "make_zero",
         "-movflags", "frag_keyframe+empty_moov+default_base_moof",
         "-f", "mp4",
         "pipe:1",
