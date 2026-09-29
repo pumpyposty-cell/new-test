@@ -4416,7 +4416,14 @@ async def seedr_v2_video_url(file_id: str, audio_index: int | None = None) -> st
             if url.startswith(("http://", "https://")):
                 return url
     except HTTPException:
-        pass
+        # Never fall back to the default presentation for an alternate-audio
+        # request, otherwise the UI can appear to switch while playing the
+        # original audio track again.
+        if audio_index is not None:
+            return ""
+
+    if audio_index is not None:
+        return ""
 
     try:
         payload = seedr_data(await seedr_v2_request(f"/download/file/{quote(file_id)}/url"))
