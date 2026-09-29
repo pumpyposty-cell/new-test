@@ -5623,12 +5623,12 @@ async def seedr_audio_media_route(
     track: int = Query(0, ge=0),
     start: float = Query(0.0, ge=0.0),
 ):
-    """Stream one Seedr audio track as browser-compatible fragmented MP4.
+    """Stream one embedded audio track as a browser-native MP3 stream.
 
-    This route is used for alternate-audio playback so the video element never
-    has to be replaced. Keeping video on its original timeline avoids the
-    shortened-duration and A/V drift caused by remuxing the whole video when a
-    user changes audio tracks.
+    The video element remains on Seedr's original full-duration Range stream.
+    This endpoint is only for the alternate audio element, so transcoding is
+    limited to the selected audio track and begins at the requested timestamp.
+    MP3 avoids fragmented-MP4 compatibility issues in HTMLAudioElement.
     """
     if not current_seedr_token():
         raise HTTPException(503, "Seedr is not configured")
@@ -5644,11 +5644,6 @@ async def seedr_audio_media_route(
 
     source_url = await _seedr_media_source_url(file_id)
 
-    # Always produce a clean browser-compatible AAC stream. Copying an
-    # arbitrary AAC track directly into a fragmented MP4 can produce files
-    # that Chrome accepts at the HTTP level but rejects as an HTMLMediaElement
-    # source (especially with multichannel tracks or non-standard priming
-    # metadata). Transcoding also normalizes timestamps after a mid-stream seek.
     command = [
         "ffmpeg", "-v", "error", "-nostdin",
         *(["-ss", str(max(0.0, start))] if start > 0 else []),
@@ -5657,14 +5652,12 @@ async def seedr_audio_media_route(
         "-vn",
         "-sn",
         "-dn",
-        "-c:a", "aac",
-        "-b:a", "192k",
-        "-ac", "2",
+        "-c:a", "libmp3lame",
+        "-b:a", "160k",
         "-ar", "48000",
+        "-ac", "2",
         "-af", "aresample=async=1:first_pts=0",
-        "-avoid_negative_ts", "make_zero",
-        "-movflags", "frag_keyframe+empty_moov+default_base_moof",
-        "-f", "mp4",
+        "-f", "mp3",
         "pipe:1",
     ]
 
@@ -5680,7 +5673,7 @@ async def seedr_audio_media_route(
     async def body():
         try:
             while True:
-                chunk = await process.stdout.read(512 * 1024)
+                chunk = await process.stdout.read(256 * 1024)
                 if not chunk:
                     break
                 yield chunk
@@ -5697,11 +5690,13 @@ async def seedr_audio_media_route(
 
     return StreamingResponse(
         body(),
-        media_type="audio/mp4",
+        media_type="audio/mpeg",
         headers={
-            "Accept-Ranges": "bytes",
+            "Accept-Ranges": "none",
             "Cache-Control": "no-store",
             "Access-Control-Allow-Origin": "*",
+            "X-Audio-Track": str(track),
+            "X-Audio-Start": f"{max(0.0, start):.3f}",
         },
     )
 
