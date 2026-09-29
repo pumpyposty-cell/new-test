@@ -4640,6 +4640,23 @@ async def seedr_file_stream(
         presentation_url = await seedr_v2_video_url(resolved_id)
         is_hls_presentation = bool(presentation_url and await _presentation_is_hls(presentation_url))
 
+        # For files with multiple embedded audio tracks, use the synchronized
+        # HLS presentation. This keeps video and audio in one browser media
+        # pipeline and restores reliable default audio playback.
+        try:
+            dynamic_info = await _get_seedr_dynamic_hls_info(resolved_id)
+        except HTTPException:
+            dynamic_info = None
+
+        if dynamic_info and len(dynamic_info.get("audio") or []) > 1:
+            return {
+                "url": "/api/seedr/hls-master/" + quote(resolved_id, safe=""),
+                "externalUrl": presentation_url or _seedr_media_url(resolved_id, "video"),
+                "name": name or resolved_id,
+                "resolvedFileId": resolved_id,
+                "protocol": "hls-multi-audio",
+            }
+
         # Keep alternate-audio playback browser-side. Do not generate
         # synthetic HLS or run FFmpeg for normal multi-audio playback on the
         # Render Free instance. The player uses the primary presentation for
