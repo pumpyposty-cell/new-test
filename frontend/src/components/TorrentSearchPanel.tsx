@@ -652,7 +652,7 @@ export const TorrentSearchPanel: React.FC<TorrentSearchPanelProps> = ({ onPrepar
                             <button
                               type="button"
                               onClick={() => onOpenSeedrFiles?.(folderId, folderPath)}
-                              className="px-2 py-1.5 rounded-lg bg-cyan-500 text-slate-950 font-bold text-xs hover:bg-cyan-400 transition flex items-center gap-1"
+                              className="px-2 py-1.5 rounded-lg bg-amber-400 text-slate-950 font-bold text-xs hover:bg-amber-300 transition flex items-center gap-1"
                               title="Open all files in My Cloud Files"
                             >
                               <FolderOpen className="w-3.5 h-3.5" />
