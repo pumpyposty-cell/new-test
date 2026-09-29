@@ -42,24 +42,24 @@ function parseWebVttTimestamp(value: string): number {
 
 function parseWebVttCues(source: string): SubtitleCue[] {
   return String(source || '')
-    .replace(/^\\uFEFF/, '')
-    .split(/\\n{2,}/)
+    .replace(/^\uFEFF/, '')
+    .split(/\n{2,}/)
     .map(block => block.trim())
     .filter(Boolean)
     .flatMap(block => {
-      const lines = block.split(/\\n/).map(line => line.trimEnd());
+      const lines = block.split(/\n/).map(line => line.trimEnd());
       const timingIndex = lines.findIndex(line => line.includes('-->'));
       if (timingIndex < 0) return [];
-      const timing = lines[timingIndex].match(/^(.+?)\\s*-->\\s*(.+?)(?:\\s+.*)?$/);
+      const timing = lines[timingIndex].match(/^(.+?)\s*-->\s*(.+?)(?:\s+.*)?$/);
       if (!timing) return [];
       const start = parseWebVttTimestamp(timing[1]);
       const end = parseWebVttTimestamp(timing[2]);
-      const text = lines.slice(timingIndex + 1).join('\\n').trim();
+      const text = lines.slice(timingIndex + 1).join('\n').trim();
       if (!text || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) return [];
       return [{
         start,
         end,
-        text: text.replace(/<[^>]+>/g, '').replace(/\\s+\\n/g, '\\n').trim(),
+        text: text.replace(/<[^>]+>/g, '').replace(/\s+\n/g, '\n').trim(),
       }];
     });
 }
