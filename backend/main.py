@@ -4655,7 +4655,7 @@ async def seedr_file_stream(
                 # Explicitly request audio track 0 from Seedr's V2
                 # presentation. Some single-audio files expose a silent
                 # default presentation unless the audio rendition is named.
-                "url": "/api/seedr/media/video/" + quote(resolved_id, safe="") + "?audio=0",
+                "url": "/api/seedr/media/video/" + quote(resolved_id, safe=""),
                 "externalUrl": presentation_url,
                 "name": name or resolved_id,
                 "resolvedFileId": resolved_id,
