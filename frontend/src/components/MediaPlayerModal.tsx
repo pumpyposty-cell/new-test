@@ -973,15 +973,23 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     const primary = primaryAudioIndexRef.current;
 
     if (!isMultiAudio) {
-      // Single-audio files stay entirely on Seedr's native video+audio
-      // presentation. Do not create a second audio request here: Seedr's
-      // legacy MP3 endpoint can reject session credentials, while the native
-      // video presentation is the lowest-load and properly synchronized path.
-      if (alternateAudioIndexRef.current !== undefined || companionAudioModeRef.current !== null) {
-        clearAlternateAudio(true);
+      // Seedr's direct presentation can be video-only for some otherwise
+      // normal single-audio files. Use the same proven audio-only FFmpeg
+      // fallback used for alternate tracks, but only for the one audio track.
+      // The video itself stays on Seedr's native Range stream.
+      const position = Number.isFinite(media.currentTime) ? media.currentTime : currentTime;
+      const shouldPlay = !media.paused || isPlaying;
+
+      if (
+        companionAudioModeRef.current === 'alternate' &&
+        alternateAudioIndexRef.current === 0 &&
+        alternateAudioRef.current?.src
+      ) {
+        media.muted = true;
+        return;
       }
-      media.volume = isMutedRef.current ? 0 : volume;
-      media.muted = isMutedRef.current;
+
+      loadAlternateAudio(0, position, shouldPlay);
       return;
     }
 
