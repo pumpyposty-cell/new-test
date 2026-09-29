@@ -5504,25 +5504,48 @@ async def seedr_video_media(
 async def seedr_audio_presentation_url(
     file_id: str,
     track: int = Query(0, ge=0),
+    start: float = Query(0.0, ge=0.0),
 ):
-    """Resolve a Seedr presentation URL for one embedded audio track.
+    """Resolve a browser-playable source for one embedded audio track.
 
-    This endpoint does not transcode/remux media. It only asks Seedr for the
-    browser presentation URL, keeping alternate-audio switching lightweight
-    enough for the Render Free instance.
+    Prefer Seedr V2's native alternate-audio presentation. If Seedr does not
+    expose a presentation for that track, fall back to the existing audio-only
+    FFmpeg path. The fallback transcodes audio only; the main video remains on
+    the original Range-aware timeline, so seeking is still full-duration.
     """
     if not current_seedr_token():
         raise HTTPException(503, "Seedr is not configured")
 
-    url = await seedr_v2_video_url(file_id, audio_index=track)
-    if not url:
-        raise HTTPException(404, "Seedr returned no audio presentation URL")
+    direct_url = await seedr_v2_video_url(file_id, audio_index=track)
+    if direct_url:
+        logger.info(
+            "Seedr alternate audio presentation resolved: file=%s track=%s mode=direct",
+            file_id,
+            track,
+        )
+        return {
+            "url": "/api/seedr/media/audio-proxy/" + quote(file_id, safe="") +
+                   "?track=" + quote(str(track), safe=""),
+            "track": track,
+            "fileId": file_id,
+            "protocol": "seedr-direct-audio",
+            "start": 0,
+        }
 
+    logger.info(
+        "Seedr alternate audio presentation unavailable: file=%s track=%s mode=ffmpeg-audio start=%.3f",
+        file_id,
+        track,
+        start,
+    )
     return {
-        "url": url,
+        "url": "/api/seedr/media/audio/" + quote(file_id, safe="") +
+               "?track=" + quote(str(track), safe="") +
+               "&start=" + quote(f"{max(0.0, start):.3f}", safe=""),
         "track": track,
         "fileId": file_id,
-        "protocol": "seedr-direct-audio",
+        "protocol": "ffmpeg-audio-fallback",
+        "start": max(0.0, start),
     }
 
 
