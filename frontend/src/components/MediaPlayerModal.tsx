@@ -666,9 +666,6 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     const requestId = ++alternateAudioRequestRef.current;
     const safePosition = Math.max(0, Number.isFinite(position) ? position : 0);
 
-    // Keep the original video resource and timeline intact. Only its audio
-    // output is muted while the selected track is prepared in a second audio
-    // element. This preserves the full-duration video timeline.
     media.pause();
     media.muted = true;
     audio.pause();
@@ -681,48 +678,21 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     setIsSeeking(true);
     alternateAudioIndexRef.current = trackIndex;
 
-    // Seedr may not expose a separate V2 presentation for every alternate
-    // track. The backend therefore chooses either the lightweight Seedr
-    // byte-proxy or an audio-only FFmpeg fallback. The latter starts at the
-    // requested video position, so its own timeline begins at 0.
-    void api.getSeedrAudioPresentationUrl(fileId, trackIndex, safePosition)
-      .then(({ url, protocol }) => {
-        if (requestId !== alternateAudioRequestRef.current) return;
-        if (!url) throw new Error('Seedr returned an empty audio playback URL');
-        audio.dataset.playbackProtocol = String(protocol || '');
-        audio.dataset.playbackStart = String(
-          protocol === 'ffmpeg-audio-fallback' ? safePosition : 0
-        );
-        audio.src = url;
-        audio.load();
-      })
-      .catch((error) => {
-        if (requestId !== alternateAudioRequestRef.current) return;
-        console.warn('[MEDIA][AUDIO] alternate track load failed', error);
-        alternateAudioIndexRef.current = undefined;
-        media.muted = isMuted;
-        setIsSeeking(false);
-        setIsPlaying(false);
-        setTrackNotice('Unable to resolve the selected audio track.');
-      });
+    let started = false;
+    let readyTimeout = 0;
 
-    const handleAudioError = () => {
-      if (requestId !== alternateAudioRequestRef.current) return;
-      alternateAudioIndexRef.current = undefined;
-      media.muted = isMuted;
-      setIsSeeking(false);
-      setIsPlaying(false);
-      setTrackNotice('Unable to load the selected audio track.');
-      audio.removeEventListener('canplay', startTogether);
-    };
-
-    const startTogether = () => {
-      if (requestId !== alternateAudioRequestRef.current) return;
+    const finish = () => {
+      if (requestId !== alternateAudioRequestRef.current || started) return;
+      started = true;
+      if (readyTimeout) window.clearTimeout(readyTimeout);
+      audio.removeEventListener('loadedmetadata', startTogether);
+      audio.removeEventListener('loadeddata', startTogether);
       audio.removeEventListener('canplay', startTogether);
       audio.removeEventListener('error', handleAudioError);
 
-      const playbackProtocol = String(audio.dataset.playbackProtocol || '');
-      const targetTime = playbackProtocol === 'ffmpeg-audio-fallback' ? 0 : safePosition;
+      const protocol = String(audio.dataset.playbackProtocol || '');
+      const targetTime = protocol === 'ffmpeg-audio-fallback' ? 0 : safePosition;
+
       try {
         if (Number.isFinite(audio.duration) && audio.duration > 0) {
           audio.currentTime = Math.min(targetTime, Math.max(0, audio.duration - 0.1));
@@ -738,7 +708,6 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
         return;
       }
 
-      // Start both elements only after the selected audio is playable.
       const startVideo = media.play();
       const startAudio = audio.play();
       Promise.allSettled([startVideo, startAudio]).then((results) => {
@@ -759,8 +728,56 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
       });
     };
 
-    audio.addEventListener('canplay', startTogether, { once: true });
+    const startTogether = () => {
+      // loadedmetadata is enough for the audio-only MP4 fallback; waiting
+      // exclusively for canplay could leave the switch spinner stuck on a
+      // long-running Render response.
+      finish();
+    };
+
+    const handleAudioError = () => {
+      if (requestId !== alternateAudioRequestRef.current || started) return;
+      if (readyTimeout) window.clearTimeout(readyTimeout);
+      audio.removeEventListener('loadedmetadata', startTogether);
+      audio.removeEventListener('loadeddata', startTogether);
+      audio.removeEventListener('canplay', startTogether);
+      alternateAudioIndexRef.current = undefined;
+      media.muted = isMuted;
+      setIsSeeking(false);
+      setIsPlaying(false);
+      setTrackNotice('Unable to load the selected audio track.');
+    };
+
+    audio.addEventListener('loadedmetadata', startTogether);
+    audio.addEventListener('loadeddata', startTogether);
+    audio.addEventListener('canplay', startTogether);
     audio.addEventListener('error', handleAudioError, { once: true });
+
+    // Do not leave the player permanently blocked if a streaming response
+    // provides no readiness event. Give the browser a chance to start once
+    // headers/metadata have arrived, then surface a real playback error.
+    readyTimeout = window.setTimeout(() => {
+      if (!started && requestId === alternateAudioRequestRef.current) {
+        setTrackNotice('Audio stream is taking too long to start.');
+        setIsSeeking(false);
+      }
+    }, 15000);
+
+    void api.getSeedrAudioPresentationUrl(fileId, trackIndex, safePosition)
+      .then(({ url, protocol, start }) => {
+        if (requestId !== alternateAudioRequestRef.current) return;
+        if (!url) throw new Error('Seedr returned an empty audio playback URL');
+
+        audio.dataset.playbackProtocol = String(protocol || '');
+        audio.dataset.playbackStart = String(Number(start) || 0);
+        audio.src = url;
+        audio.load();
+      })
+      .catch((error) => {
+        if (requestId !== alternateAudioRequestRef.current) return;
+        console.warn('[MEDIA][AUDIO] alternate track load failed', error);
+        handleAudioError();
+      });
   };
 
   const clearAlternateAudio = (restoreVideoAudio = true) => {
