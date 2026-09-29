@@ -5506,38 +5506,16 @@ async def seedr_audio_presentation_url(
     track: int = Query(0, ge=0),
     start: float = Query(0.0, ge=0.0),
 ):
-    """Resolve a browser-playable source for one embedded audio track.
+    """Return the reliable audio-only fallback for an embedded audio track.
 
-    Prefer Seedr V2's native alternate-audio presentation. If Seedr does not
-    expose a presentation for that track, fall back to the existing audio-only
-    FFmpeg path. The fallback transcodes audio only; the main video remains on
-    the original Range-aware timeline, so seeking is still full-duration.
+    Seedr's V2 presentation can return a source that is valid for the main
+    video path but does not consistently expose usable audio to HTMLAudioElement.
+    Keep the main video on the native Range stream and produce only the selected
+    audio track as MP3 when the browser needs it.
     """
     if not current_seedr_token():
         raise HTTPException(503, "Seedr is not configured")
 
-    direct_url = await seedr_v2_video_url(file_id, audio_index=track)
-    if direct_url:
-        logger.info(
-            "Seedr alternate audio presentation resolved: file=%s track=%s mode=direct",
-            file_id,
-            track,
-        )
-        return {
-            "url": "/api/seedr/media/audio-proxy/" + quote(file_id, safe="") +
-                   "?track=" + quote(str(track), safe=""),
-            "track": track,
-            "fileId": file_id,
-            "protocol": "seedr-direct-audio",
-            "start": 0,
-        }
-
-    logger.info(
-        "Seedr alternate audio presentation unavailable: file=%s track=%s mode=ffmpeg-audio start=%.3f",
-        file_id,
-        track,
-        start,
-    )
     return {
         "url": "/api/seedr/media/audio/" + quote(file_id, safe="") +
                "?track=" + quote(str(track), safe="") +
@@ -5547,7 +5525,6 @@ async def seedr_audio_presentation_url(
         "protocol": "ffmpeg-audio-fallback",
         "start": max(0.0, start),
     }
-
 
 @app.get("/api/seedr/media/audio-proxy/{file_id}")
 async def seedr_audio_presentation_proxy(
