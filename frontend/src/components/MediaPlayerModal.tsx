@@ -933,9 +933,9 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
       const wasPlaying = !media.paused;
       setSelectedAudioIndex(next);
 
-      // Single-audio direct streams use native Seedr audio and do not
-      // need a second element. Multi-audio streams use the hybrid path.
+      // Single-audio direct streams use Seedr's native video+audio.
       if (audioTracks.length <= 1) {
+        clearAlternateAudio(true);
         media.volume = isMutedRef.current ? 0 : volume;
         media.muted = isMutedRef.current;
         media.currentTime = position;
@@ -973,58 +973,15 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     const primary = primaryAudioIndexRef.current;
 
     if (!isMultiAudio) {
-      const companion = alternateAudioRef.current;
-      const fileId = file.streamId || file.id.replace(/^seedr-/, '');
-      if (!companion || !fileId) {
-        media.muted = isMutedRef.current;
-        return;
+      // Single-audio files stay entirely on Seedr's native video+audio
+      // presentation. Do not create a second audio request here: Seedr's
+      // legacy MP3 endpoint can reject session credentials, while the native
+      // video presentation is the lowest-load and properly synchronized path.
+      if (alternateAudioIndexRef.current !== undefined || companionAudioModeRef.current !== null) {
+        clearAlternateAudio(true);
       }
-
-      const companionUrl =
-        API_BASE + '/api/seedr/media/native-audio/' + encodeURIComponent(fileId);
-
-      // Single-audio files use Seedr's prepared MP3 rendition as a lightweight
-      // companion track. The video stays on the original native Range stream;
-      // no FFmpeg is involved, so this avoids the silent-video presentation
-      // while keeping the Render service out of the transcoding path.
-      if (
-        companionAudioModeRef.current !== 'native' ||
-        companion.src !== companionUrl
-      ) {
-        const position = Number.isFinite(media.currentTime) ? media.currentTime : currentTime;
-        const wasPlaying = !media.paused || isPlaying;
-
-        alternateAudioRequestRef.current += 1;
-        companion.pause();
-        companion.src = companionUrl;
-        companion.preload = 'auto';
-        companion.volume = media.volume;
-        companion.muted = isMutedRef.current;
-        companion.playbackRate = playbackSpeed;
-        companionAudioModeRef.current = 'native';
-        alternateAudioIndexRef.current = 0;
-        media.muted = true;
-
-        const startCompanion = () => {
-          try {
-            companion.currentTime = Math.max(0, position);
-          } catch {}
-          if (wasPlaying) {
-            void companion.play().catch(() => {});
-          }
-        };
-        companion.addEventListener('loadedmetadata', startCompanion, { once: true });
-        companion.load();
-      } else {
-        media.muted = true;
-        companion.volume = media.volume;
-        companion.muted = isMutedRef.current;
-        companion.playbackRate = playbackSpeed;
-        if (!media.paused && companion.paused) {
-          void companion.play().catch(() => {});
-        }
-      }
-
+      media.volume = isMutedRef.current ? 0 : volume;
+      media.muted = isMutedRef.current;
       return;
     }
 
