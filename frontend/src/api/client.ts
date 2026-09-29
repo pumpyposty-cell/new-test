@@ -789,6 +789,19 @@ export const api = {
     const body = await res.text();
     let data: any = null;
     try { data = body ? JSON.parse(body) : null; } catch { data = null; }
+    // Seedr can legitimately return 404 when a task has already
+    // completed, been removed, or is stale in the browser. Treat that as a
+    // terminal "not_found" state instead of throwing so callers can stop
+    // polling and clear the stale task from local state.
+    if (res.status === 404) {
+      return {
+        taskId,
+        name: '',
+        folderId: '',
+        status: 'not_found',
+        progress: 0,
+      };
+    }
     if (!res.ok) throw new Error(data?.error || body || 'Failed to check Seedr task progress');
     return {
       taskId: data?.taskId ?? taskId,
