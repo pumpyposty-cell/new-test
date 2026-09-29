@@ -2750,12 +2750,11 @@ export default function App() {
                     {Number(seedrNotice.progress || 0).toFixed(1)}%
                   </span>
                 </div>
-                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-800">
-                  <div
-                    className="h-full rounded-full bg-emerald-400 transition-all duration-500"
-                    style={{ width: Math.max(0, Math.min(100, Number(seedrNotice.progress) || 0)) + '%' }}
-                  />
-                </div>
+                <progress
+                  className="mt-2 h-2 w-full"
+                  value={Number(seedrNotice.progress) || 0}
+                  max={100}
+                />
               </div>
               <button
                 type="button"
