@@ -26,6 +26,44 @@ import { api, API_BASE } from '../api/client.ts';
 import { StorageFile } from '../types/index.ts';
 import { formatBytes, formatDuration } from '../utils/formatters.ts';
 
+type SubtitleCue = { start: number; end: number; text: string };
+
+function parseWebVttTimestamp(value: string): number {
+  const normalized = String(value || '').trim().replace(',', '.');
+  const parts = normalized.split(':');
+  if (parts.length === 3) {
+    return Number(parts[0]) * 3600 + Number(parts[1]) * 60 + Number(parts[2]);
+  }
+  if (parts.length === 2) {
+    return Number(parts[0]) * 60 + Number(parts[1]);
+  }
+  return Number(normalized) || 0;
+}
+
+function parseWebVttCues(source: string): SubtitleCue[] {
+  return String(source || '')
+    .replace(/^\\uFEFF/, '')
+    .split(/\\n{2,}/)
+    .map(block => block.trim())
+    .filter(Boolean)
+    .flatMap(block => {
+      const lines = block.split(/\\n/).map(line => line.trimEnd());
+      const timingIndex = lines.findIndex(line => line.includes('-->'));
+      if (timingIndex < 0) return [];
+      const timing = lines[timingIndex].match(/^(.+?)\\s*-->\\s*(.+?)(?:\\s+.*)?$/);
+      if (!timing) return [];
+      const start = parseWebVttTimestamp(timing[1]);
+      const end = parseWebVttTimestamp(timing[2]);
+      const text = lines.slice(timingIndex + 1).join('\\n').trim();
+      if (!text || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) return [];
+      return [{
+        start,
+        end,
+        text: text.replace(/<[^>]+>/g, '').replace(/\\s+\\n/g, '\\n').trim(),
+      }];
+    });
+}
+
 interface MediaPlayerModalProps {
   file: StorageFile | null;
   onClose: () => void;
@@ -68,6 +106,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
   const [subtitleSearchError, setSubtitleSearchError] = useState('');
   const [tracksLoading, setTracksLoading] = useState(false);
   const [subtitleBlobUrl, setSubtitleBlobUrl] = useState('');
+  const [subtitleCues, setSubtitleCues] = useState<SubtitleCue[]>([]);
 
   const resumeTimeRef = useRef(0);
   const resumePlayingRef = useRef(false);
@@ -367,18 +406,20 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
     let objectUrl = '';
 
     if (selectedSubtitleIndex === undefined) {
+      setSubtitleCues([]);
       setSubtitleBlobUrl(prev => {
         if (prev) URL.revokeObjectURL(prev);
         return '';
       });
-      const track = subtitleTrackRef.current?.track;
-      if (track) track.mode = 'disabled';
       return () => {};
     }
 
     const selected = subtitleTracks.find(track => track.index === selectedSubtitleIndex);
     const sourceUrl = String(selected?.url || '').trim();
-    if (!sourceUrl) return () => {};
+    if (!sourceUrl) {
+      setSubtitleCues([]);
+      return () => {};
+    }
 
     setTrackNotice('Loading subtitles…');
     const subtitleUrl = sourceUrl.startsWith('/') ? API_BASE + sourceUrl : sourceUrl;
@@ -389,6 +430,7 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
         if (!/^\\s*WEBVTT(?:\\s|$)/i.test(text)) {
           throw new Error('Subtitle response is not valid WebVTT');
         }
+        setSubtitleCues(parseWebVttCues(text));
         return new Blob([text], { type: 'text/vtt' });
       })
       .then(blob => {
@@ -470,6 +512,10 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
   }, [isVideo]);
 
   if (!file) return null;
+
+  const activeSubtitleCue = subtitleCues.find(
+    cue => currentTime >= cue.start && currentTime < cue.end
+  );
 
   const handleMediaError = () => {
     // When Hls.js owns the video element, Chrome can briefly report
@@ -1199,16 +1245,10 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
               onLoadedMetadata={onLoadedMetadata}
               onEnded={() => setIsPlaying(false)}
               onError={handleMediaError}>
-              {selectedSubtitleIndex !== undefined && (
-                <track
-                  ref={subtitleTrackRef}
-                  key={selectedSubtitleIndex}
-                  kind="subtitles"
-                  src={subtitleBlobUrl}
-                  srcLang={subtitleTracks.find(track => track.index === selectedSubtitleIndex)?.language || 'en'}
-                  label={subtitleTracks.find(track => track.index === selectedSubtitleIndex)?.title || subtitleTracks.find(track => track.index === selectedSubtitleIndex)?.language?.toUpperCase() || 'Subtitles'}
-                  default
-                />
+              {activeSubtitleCue && selectedSubtitleIndex !== undefined && (
+                <div className="absolute left-1/2 bottom-4 z-20 max-w-[90%] -translate-x-1/2 rounded-md bg-black/75 px-3 py-1.5 text-center text-sm font-medium leading-6 text-white shadow-lg backdrop-blur-sm whitespace-pre-line pointer-events-none md:text-base">
+                  {activeSubtitleCue.text}
+                </div>
               )}
             </video>
           ) : (
