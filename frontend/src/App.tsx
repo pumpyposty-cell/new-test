@@ -2736,10 +2736,6 @@ export default function App() {
           </div>
         )}
 
-        <div className="sticky top-2 z-40 mb-3 rounded-2xl border border-emerald-500/30 bg-slate-950/95 px-3.5 py-3.5">
-          Seedr download in progress
-        </div>
-
         {/* TAB 0: TORRENT SEARCH
             Keep this component mounted when switching tabs so an in-flight
             search continues in the background and its results remain available
@@ -3211,6 +3207,40 @@ export default function App() {
         {/* Activity Log and Auto-Cleanup/Disk tabs are intentionally hidden. */}
 
       </main>
+      <div
+        hidden={!seedrDownloadActive || !seedrNotice}
+        className="fixed inset-x-3 top-20 z-[90] mx-auto max-w-7xl rounded-2xl border border-emerald-500/30 bg-slate-950/95 px-3.5 py-3.5 shadow-xl shadow-emerald-950/20 backdrop-blur-md sm:inset-x-6"
+      >
+        <div className="flex items-center gap-3">
+          <Loader2 className="h-5 w-5 shrink-0 animate-spin text-emerald-400" />
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-bold text-slate-100 truncate">
+              Loading {seedrNotice?.name || 'torrent'} in Seedr
+            </div>
+            <div className="mt-0.5 flex items-center justify-between gap-3 text-[11px] text-slate-400">
+              <span>{seedrNotice?.status === 'waiting' ? 'Waiting for Seedr to start…' : 'Downloading…'}</span>
+              <span className="font-semibold text-emerald-300">
+                {Number(seedrNotice?.progress || 0).toFixed(1)}%
+              </span>
+            </div>
+            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-800">
+              <div
+                className="h-full rounded-full bg-emerald-400 transition-all duration-500"
+                style={{ width: Math.max(0, Math.min(100, Number(seedrNotice?.progress) || 0)) + '%' }}
+              />
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleCancelSeedrDownload()}
+            disabled={isCancellingSeedr}
+            className="shrink-0 rounded-xl border border-rose-500/25 bg-rose-500/10 px-2.5 py-1.5 text-[10px] font-bold text-rose-300 hover:bg-rose-500/20 disabled:opacity-50"
+          >
+            {isCancellingSeedr ? 'Cancelling…' : 'Cancel'}
+          </button>
+        </div>
+      </div>
+
 
       {/* Floating Bottom Media Player (when minimized or active) */}
       <MediaPlayerModal
