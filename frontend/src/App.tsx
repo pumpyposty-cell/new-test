@@ -85,21 +85,13 @@ export default function App() {
   // Seedr connection is optional. Never open the connection dialog automatically
   // on page load/refresh; the user opens it explicitly or reaches a Seedr action.
   const [seedrOnboardingOpen, setSeedrOnboardingOpen] = useState(false);
-  const seedrOnboardingSeenKey = 'seedflow_seedr_onboarding_seen';
   const [seedrConnected, setSeedrConnected] = useState(false);
   const [seedrSessionReady, setSeedrSessionReady] = useState(false);
   const [seedrPat, setSeedrPat] = useState('');
   const [seedrPatSubmitting, setSeedrPatSubmitting] = useState(false);
   const [seedrConnectError, setSeedrConnectError] = useState('');
 
-  const markSeedrOnboardingSeen = useCallback(() => {
-    try {
-      window.localStorage.setItem(seedrOnboardingSeenKey, '1');
-    } catch {
-      // Storage can be unavailable in private/sandboxed contexts.
-    }
-    setSeedrOnboardingOpen(false);
-  }, []);
+;
 
   useEffect(() => {
     let stopped = false;
@@ -119,7 +111,7 @@ export default function App() {
     return () => {
       stopped = true;
     };
-  }, [markSeedrOnboardingSeen]);
+  });
 
   const connectSeedrWithPat = useCallback(async () => {
     const pat = seedrPat.trim();
