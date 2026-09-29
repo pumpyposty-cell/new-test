@@ -4631,46 +4631,21 @@ async def seedr_file_stream(
     resolved_id = await resolve_seedr_stream_id(file_id, name)
 
     if type == "video":
-        # Some Seedr V2 direct presentations are video-only even when the
-        # original file has a normal single audio stream. In that case force
-        # Seedr's HLS playback path; Seedr handles browser-compatible audio
-        # packaging and Render only proxies the HLS stream.
-        try:
-            probe = await _ffprobe_seedr_file(resolved_id)
-            probe_streams = probe.get("streams") if isinstance(probe, dict) else []
-            probe_audio_count = sum(
-                1 for stream in (probe_streams if isinstance(probe_streams, list) else [])
-                if isinstance(stream, dict)
-                and str(stream.get("codec_type") or "").lower() == "audio"
-            )
-        except HTTPException as exc:
-            logger.info("Seedr audio-count probe unavailable for %s: %s", resolved_id, exc)
-            probe_audio_count = 0
-
+        # Restore the tested direct-browser-stream strategy from
+        # fix-seedr-direct-browser-stream:
+        #   1) ask Seedr V2 for its presentation URL;
+        #   2) if it is a browser-playable direct presentation, proxy it with
+        #      Range support;
+        #   3) otherwise use the existing HLS proxy.
         presentation_url = await seedr_v2_video_url(resolved_id)
         is_hls_presentation = bool(presentation_url and await _presentation_is_hls(presentation_url))
 
-        if probe_audio_count == 1:
-            try:
-                await _fetch_seedr_hls_manifest(resolved_id)
-                logger.info(
-                    "Seedr playback using HLS for single-audio file: file=%s",
-                    resolved_id,
-                )
-                return {
-                    "url": "/api/seedr/hls/" + quote(resolved_id, safe=""),
-                    "externalUrl": presentation_url or _seedr_media_url(resolved_id, "video"),
-                    "name": name or resolved_id,
-                    "resolvedFileId": resolved_id,
-                    "protocol": "hls-single-audio",
-                }
-            except HTTPException as exc:
-                logger.info(
-                    "Seedr HLS unavailable for single-audio file %s: %s",
-                    resolved_id,
-                    exc,
-                )
-
+        # Prefer Seedr's own non-HLS presentation first. This is the full-duration
+        # path: the browser receives the real presentation through a Range-aware
+        # proxy, so the video's native duration/seekable timeline is preserved
+        # even when the source file contains multiple audio tracks.
+        # Alternate audio tracks are switched independently through Seedr V2 by
+        # MediaPlayerModal; Render does not transcode the movie.
         if (presentation_url and not is_hls_presentation):
             logger.info(
                 "Seedr playback resolved to direct presentation: file=%s protocol=direct multi_audio_check=skipped",
