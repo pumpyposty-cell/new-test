@@ -256,7 +256,12 @@ export const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({
             url: data?.url || sourceUrl,
           });
 
-          if (!triedFallback && fallbackStreamUrl && sourceUrl !== fallbackStreamUrl) {
+          if (
+            !triedFallback &&
+            fallbackStreamUrl &&
+            sourceUrl !== fallbackStreamUrl &&
+            !sourceUrl.includes('/api/seedr/hls-master/')
+          ) {
             triedFallback = true;
             setTrackNotice('Trying browser-compatible stream…');
             startHls(fallbackStreamUrl);
