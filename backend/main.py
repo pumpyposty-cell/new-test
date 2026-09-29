@@ -5605,6 +5605,74 @@ async def seedr_audio_presentation_proxy(
     )
 
 
+@app.get("/api/seedr/media/native-audio/{file_id}")
+async def seedr_native_audio_media_route(
+    file_id: str,
+    request: Request,
+):
+    """Proxy Seedr's native MP3 rendition without FFmpeg.
+
+    Used as the companion audio for single-audio browser playback. The video
+    remains on Seedr's native Range stream while this endpoint carries the
+    already-prepared audio rendition, avoiding server-side transcoding.
+    """
+    if not current_seedr_token():
+        raise HTTPException(503, "Seedr is not configured")
+
+    upstream_url = _seedr_media_url(file_id, "audio")
+    headers = {"Accept": "audio/*,application/octet-stream,*/*", "Accept-Encoding": "identity"}
+    range_header = request.headers.get("range")
+    if range_header:
+        headers["Range"] = range_header
+
+    client = httpx.AsyncClient(timeout=60, follow_redirects=True)
+    try:
+        response = await client.send(
+            client.build_request("GET", upstream_url, headers=headers),
+            stream=True,
+        )
+    except Exception:
+        await client.aclose()
+        raise
+
+    if response.status_code >= 400:
+        body = await response.aread()
+        status = response.status_code
+        content_type = response.headers.get("content-type", "audio/mpeg")
+        await response.aclose()
+        await client.aclose()
+        return Response(
+            content=body,
+            status_code=status,
+            media_type=content_type,
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+    response_headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Accept-Ranges": response.headers.get("accept-ranges", "bytes"),
+        "Cache-Control": "no-store",
+    }
+    for header in ("content-range", "content-length", "etag", "last-modified"):
+        if response.headers.get(header):
+            response_headers[header.title()] = response.headers[header]
+
+    async def body_stream():
+        try:
+            async for chunk in response.aiter_raw():
+                _record_media_bytes(file_id, len(chunk))
+                yield chunk
+        finally:
+            await response.aclose()
+            await client.aclose()
+
+    return StreamingResponse(
+        body_stream(),
+        status_code=response.status_code,
+        media_type=response.headers.get("content-type", "audio/mpeg"),
+        headers=response_headers,
+    )
+
 @app.get("/api/seedr/media/audio/{file_id}")
 async def seedr_audio_media_route(
     file_id: str,
