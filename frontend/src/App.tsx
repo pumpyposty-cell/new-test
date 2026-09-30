@@ -3552,9 +3552,9 @@ export default function App() {
                   <div className="flex items-start gap-3">
                     <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
                     <div className="min-w-0">
-                      <p className="text-sm font-bold text-emerald-200">Have a Seedr account?</p>
+                      <p className="text-sm font-bold text-emerald-200">Paste your Seedr token</p>
                       <p className="mt-1 text-xs leading-5 text-slate-300">
-                        Paste your Seedr token below. Your Seedr password is never requested.
+                        Paste your Personal Access Token below. Your Seedr password is never requested.
                       </p>
                     </div>
                   </div>
@@ -3598,49 +3598,40 @@ export default function App() {
                 </div>
 
                 <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-                  <p className="text-sm font-bold text-slate-100">Don’t have a Seedr account?</p>
+                  <p className="text-sm font-bold text-slate-100">Get your Seedr token</p>
                   <p className="mt-1 text-xs leading-5 text-slate-400">
-                    Create a free Seedr account first, then generate a token and paste it above.
+                    Open the Seedr API Console, sign in with Google, and create a Personal Access Token.
                   </p>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    <a
-                      href="https://www.seedr.cc/api/v0.1/console/tokens"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-100 transition hover:bg-slate-700"
-                    >
-                      Create Seedr Account <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                    <a
-                      href="https://www.seedr.cc/api/v0.1/console/tokens"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 transition hover:bg-emerald-400"
-                    >
-                      Generate Token <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                  </div>
+                  <a
+                    href="https://www.seedr.cc/api/v0.1/console/login?redirect_to=%2Fapi%2Fv0.1%2Fconsole%2Ftokens"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 transition hover:bg-emerald-400"
+                  >
+                    Token Page <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
                 </div>
 
                 <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4">
                   <div className="flex items-center gap-2">
                     <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-500/10 text-xs font-black text-cyan-300">?</div>
-                    <p className="text-sm font-bold text-slate-100">Create your Seedr token</p>
+                    <p className="text-sm font-bold text-slate-100">How to create your token</p>
                   </div>
 
                   <ol className="mt-3 space-y-2.5 pl-5 text-xs leading-5 text-slate-300 list-decimal">
                     <li>
-                      Open the{' '}
+                      Click the{' '}
                       <a
-                        href="https://www.seedr.cc/api/v0.1/console/tokens"
+                        href="https://www.seedr.cc/api/v0.1/console/login?redirect_to=%2Fapi%2Fv0.1%2Fconsole%2Ftokens"
                         target="_blank"
                         rel="noreferrer"
                         className="font-semibold text-emerald-300 underline decoration-emerald-500/40 underline-offset-2 hover:text-emerald-200"
                       >
-                        Seedr tokens
-                      </a>{' '}
-                      page.
+                        token page link here
+                      </a>.
                     </li>
+                    <li>Click <span className="font-semibold text-slate-100">Google Login</span>.</li>
+                    <li>Token page opens.</li>
                     <li>Token Name = <span className="font-semibold text-slate-100">Any name</span>.</li>
                     <li><span className="font-semibold text-slate-100">Expiration</span> = <span className="font-semibold text-slate-100">Never</span>.</li>
                     <li>Scopes = click <span className="font-semibold text-slate-100">Full Account Access</span>.</li>
