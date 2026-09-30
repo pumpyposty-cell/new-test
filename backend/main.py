@@ -2920,10 +2920,6 @@ def parse_size(value: str) -> int:
     units = {"B": 1, "KB": 1024, "MB": 1024**2, "GB": 1024**3, "TB": 1024**4}
     return int(n * units[m.group(2).upper()])
 
-@app.get("/")
-async def root():
-    return {"name": APP_NAME, "status": "ok"}
-
 @app.on_event("startup")
 async def start_seedr_cleanup_worker():
     global _seedr_cleanup_worker_task
