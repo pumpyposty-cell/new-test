@@ -37,7 +37,7 @@ SEEDR_PAT_BASE = "https://www.seedr.cc/api/v0.1/p"
 # Legacy developer-level Seedr credentials remain supported only when explicitly enabled.
 # Normal requests use a per-browser Seedr connection established through device auth.
 SEEDR_TOKEN = os.getenv("SEEDR_API_TOKEN", "").strip()
-ALLOW_LEGACY_SEEDR_TOKEN = os.getenv("ALLOW_LEGACY_SEEDR_TOKEN", "false").strip().lower() in {"1", "true", "yes", "on"}
+ALLOW_LEGACY_SEEDR_TOKEN = os.getenv("ALLOW_LEGACY_SEEDR_TOKEN", "true").strip().lower() in {"1", "true", "yes", "on"}
 # A shared folder ID cannot be used safely across different users. Personal
 # connections always start at each Seedr account's own root folder.
 SEEDR_LIBRARY_FOLDER_ID = "0"
@@ -230,7 +230,7 @@ def _seedr_restore_session(raw_cookie: str) -> tuple[str, dict[str, Any]] | None
         return None
 
 def current_seedr_token() -> str:
-    """Return the Seedr token for the current request's connected account."""
+    """Return the current browser token, or the server-configured Render token."""
     token = _seedr_request_token.get().strip()
     if token:
         return normalize_seedr_token(token)
@@ -2950,6 +2950,7 @@ async def seedr_session(request: Request):
     session = _seedr_get_session(session_id)
     token = current_seedr_token()
     connected = False
+    auth_source = "none"
 
     if token:
         try:
@@ -2959,11 +2960,17 @@ async def seedr_session(request: Request):
             finally:
                 _seedr_request_token.reset(token_ctx)
             connected = True
+            auth_source = "browser" if _seedr_session_token(session_id) else "render"
         except Exception:
-            _clear_seedr_session_token(session_id)
+            # A browser PAT should be cleared when it is rejected. A
+            # Render-configured token remains the server credential.
+            if _seedr_session_token(session_id):
+                _clear_seedr_session_token(session_id)
 
     return {
         "connected": connected,
+        "configured": bool(SEEDR_TOKEN),
+        "authSource": auth_source,
         "csrfToken": str(session.get("csrf_token") or ""),
     }
 
