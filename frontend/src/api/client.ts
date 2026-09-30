@@ -31,10 +31,8 @@ import {
 // The frontend and API are served by the same Render service in the
 // all-in-one deployment. Keep an optional VITE_API_URL override for local
 // development or an external API, but default to the current browser origin.
-// Prefer an explicit API URL when one is configured. If the frontend is
-// served from the all-in-one Render service, same-origin is correct. If the
-// frontend is hosted separately (for example an older Vercel deployment),
-// never accidentally point API/media requests at the static frontend host.
+ // Prefer an explicit API URL when one is configured. In production the
+ // normal deployment is same-origin on Render.
 const configuredApiBase = String(import.meta.env.VITE_API_URL || '').trim();
 const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
 const isRenderFullStackHost = currentHost.endsWith('.onrender.com');
@@ -88,8 +86,7 @@ export const api = {
     });
 
     // Search is served by the Render backend alongside the Seedr API.
-    // Use the same API base in development and production so the frontend
-    // can be hosted independently as a Render Static Site.
+    // Use the same API base in development and production.
     const searchBase = API_BASE;
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), 12000);
