@@ -24,6 +24,7 @@ from bs4 import BeautifulSoup
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 APP_NAME = "Torrent Studio API"
@@ -6521,3 +6522,12 @@ async def search_torrent_add(body: dict[str, Any]):
         )
     )
     return {"added": True, **result}
+
+# Serve the compiled React application from the same Render service.
+# API routes are registered above this mount, so /api/* continues to be
+# handled by FastAPI while browser UI requests are served by the Vite build.
+_FRONTEND_DIST = Path(os.getenv("FRONTEND_DIST", "/app/frontend/dist"))
+if _FRONTEND_DIST.is_dir():
+    app.mount("/", StaticFiles(directory=str(_FRONTEND_DIST), html=True), name="frontend")
+else:
+    logger.warning("Frontend build directory does not exist: %s", _FRONTEND_DIST)
