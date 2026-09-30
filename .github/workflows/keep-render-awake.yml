@@ -8,13 +8,31 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: keep-render-backend-awake
+  cancel-in-progress: false
+
 jobs:
   ping-render:
     runs-on: ubuntu-latest
-    timeout-minutes: 1
+    timeout-minutes: 2
+
     steps:
       - name: Ping Render health endpoint
+        env:
+          RENDER_HEALTH_URL: https://new-test-dmkr.onrender.com/api/health
         run: |
-          curl --fail --silent --show-error --max-time 20 \
-            https://new-test-dmkr.onrender.com/api/health
+          set -euo pipefail
+
+          echo "Keepalive started: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          echo "Target: $RENDER_HEALTH_URL"
+
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+
+          curl             --fail-with-body             --silent             --show-error             --location             --retry 3             --retry-all-errors             --retry-delay 3             --connect-timeout 10             --max-time 30             --output "$response_file"             --write-out 'HTTP %{http_code} in %{time_total}s\n'             "$RENDER_HEALTH_URL"
+
+          echo "Render response:"
+          cat "$response_file"
           echo
+          echo "Keepalive completed: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
