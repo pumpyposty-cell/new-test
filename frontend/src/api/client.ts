@@ -34,13 +34,9 @@ import {
  // Prefer an explicit API URL when one is configured. In production the
  // normal deployment is same-origin on Render.
 const configuredApiBase = String(import.meta.env.VITE_API_URL || '').trim();
-const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
-const isRenderFullStackHost = currentHost.endsWith('.onrender.com');
 export const API_BASE = (
   configuredApiBase ||
-  (isRenderFullStackHost
-    ? window.location.origin
-    : 'https://new-test-dmkr.onrender.com')
+  (typeof window !== 'undefined' ? window.location.origin : '')
 ).replace(/\/+$/, '');
 const makeSeedrError = (data: any, body: string, status: number, fallback: string) => {
   const error = new Error(
