@@ -1,4 +1,4 @@
-# Torrent Studio — Vercel + Render + Seedr
+# Torrent Studio — Render + Seedr
 
 Torrent Studio uses each user's own Seedr account for cloud torrent transfers and storage.
 
@@ -29,19 +29,14 @@ Seedr's current settings page exposes **Add Device Code** under **Extensions, AP
 
 The exact device-code endpoints used by the implementation are the currently reachable Seedr device-code endpoints; the live code endpoint returns a device code, user code, verification URL, expiry, and polling interval. citeturn594779view0
 
-## Vercel
-
-Set the project Root Directory to `frontend`.
-
-Environment variable:
-
-```
-VITE_API_URL=https://YOUR-RENDER-SERVICE.onrender.com
-```
-
 ## Render
 
-Set the service Root Directory to `backend`.
+The production deployment is a single Render Docker web service that builds and serves both the React frontend and FastAPI backend.
+
+- Render builds the frontend from `frontend/`.
+- FastAPI serves the compiled frontend from `frontend/dist`.
+- API requests, Seedr sessions, media streaming, and browser cookies use the same Render origin.
+- The Render service uses the repository root as its Docker build context; do not set the service Root Directory to `backend`.
 
 For the normal per-user flow, no personal `SEEDR_API_TOKEN` or shared `SEEDR_LIBRARY_FOLDER_ID` is required. Set `SEEDR_SESSION_SECRET` to a stable random secret so encrypted personal Seedr sessions survive backend restarts. If it is omitted, personal connections reset when the backend process restarts.
 
