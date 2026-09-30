@@ -23,7 +23,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from bs4 import BeautifulSoup
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -150,7 +150,7 @@ CORS_ORIGINS = [
 ]
 CORS_ORIGIN_REGEX = os.getenv(
     "CORS_ORIGIN_REGEX",
-    r"https://([a-zA-Z0-9-]+\.)*vercel\.app|https://([a-zA-Z0-9-]+\.)*onrender\.com|http://localhost(:\d+)?|http://127\.0\.0\.1(:\d+)?",
+    r"https://([a-zA-Z0-9-]+\.)*onrender\.com|http://localhost(:\d+)?|http://127\.0\.0\.1(:\d+)?",
 )
 
 app.add_middleware(
@@ -6527,6 +6527,18 @@ async def search_torrent_add(body: dict[str, Any]):
 # API routes are registered above this mount, so /api/* continues to be
 # handled by FastAPI while browser UI requests are served by the Vite build.
 _FRONTEND_DIST = Path(os.getenv("FRONTEND_DIST", "/app/frontend/dist"))
+
+@app.get("/", include_in_schema=False)
+async def frontend_root():
+    index_file = _FRONTEND_DIST / "index.html"
+    if index_file.is_file():
+        return FileResponse(index_file, media_type="text/html")
+    logger.error("Frontend index file does not exist: %s", index_file)
+    return JSONResponse(
+        status_code=503,
+        content={"error": "Frontend build is missing", "path": str(index_file)},
+    )
+
 if _FRONTEND_DIST.is_dir():
     app.mount("/", StaticFiles(directory=str(_FRONTEND_DIST), html=True), name="frontend")
 else:
